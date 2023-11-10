@@ -1,51 +1,27 @@
 from pathlib import Path
 from python import Python
-from utils.index import Index
+from tensor import TensorShape
+
+from mytypes import PinholeCamera, Image, MatchPair
+from myutils import np2tensor, np2tensor2d
 
 # TODO LIST
-# - Finish DB loading
-
-fn np2tensor[type: DType]( a:PythonObject) raises -> Tensor[type]:
-    let n : Int = a.size.__index__()
-    var o = Tensor[type](n)
-    for i in range(n):
-        o[i] = a[i].to_float64().cast[type]()
-    return o
-
-struct Camera:
-    # fx fy px py
-    # See: https://github.com/colmap/colmap/blob/main/src/colmap/sensor/models.h#L206
-    var cal : Tensor[DType.float64]
-
-    fn __init__(inout self, cal : Tensor[DType.float64]):
-        self.cal = cal
-
-struct Image:
-    var id_cam : Int32
-    var kp : Tensor[DType.float32]
-
-    fn __init__(inout self, inout id_cam : Int32, borrowed kp : Tensor[DType.float32]):
-        self.id_cam = id_cam
-        self.kp = kp
-
-struct MatchPair:
-    var id1 : Int32
-    var id2 : Int32
-    var matches : Tensor[DType.uint32]    
-
+# - Figure out how to store Image / Matches in SfM
+# - SE(3) class for optimization
+# - Fix loading binary -> numpy -> Tensor
 
 struct SfM:
     var dir_images : Path
-    var matches : DynamicVector[MatchPair]
-    var cameras : DynamicVector[Camera]
-    var images : DynamicVector[Image]
+    var cameras : DynamicVector[PinholeCamera]
+    var images : Pointer[Image]
+    var matches : Pointer[MatchPair]
 
     fn __init__(inout self, dir_images : Path):
         self.dir_images = dir_images
-        self.matches = DynamicVector[MatchPair]()
-        self.cameras = DynamicVector[Camera]()
-        self.images = DynamicVector[Image]()
-
+        self.cameras = DynamicVector[PinholeCamera](0)
+        self.images = Pointer[Image]()
+        self.matches = Pointer[MatchPair]()
+        
     fn frontend(inout self, force : Bool = False) raises:
         # Run COLMAP
         let os = Python.import_module("os")
@@ -75,21 +51,48 @@ struct SfM:
         let np = Python.import_module("numpy")
         let cur = sqlite3.connect(db_path.path).cursor()
 
-        # Get all cameras
+        # ------------------------- Get all cameras ------------------------- #
         var result_cameras = cur.execute("SELECT camera_id, params FROM cameras").fetchall()
         let num_cameras : Int = result_cameras.__len__().__index__()
-        self.cameras = DynamicVector[Camera](num_cameras)
+        self.cameras = DynamicVector[PinholeCamera](num_cameras)
+        # pushback a dummy one since camera indexing technically starts from one
+        self.cameras.push_back(PinholeCamera(0, 0, 0, 0))
         for r in result_cameras:
-            let cam_id : Int32 = r[0].__index__()
+            let cam_id : Int = r[0].__index__()
             let params = np2tensor[DType.float64](np.frombuffer(r[1], np.float64))
-            let cam = Camera(params)
-            # self.cameras.push_back(cam)
+            let cam = PinholeCamera(params[0], params[1], params[2], params[3])
+            self.cameras.push_back(cam)
 
+        # ------------------------- Get all images ------------------------- #
+        let result_images_ids = cur.execute("SELECT image_id, camera_id FROM images").fetchall()
+        let result_image_kps = cur.execute("SELECT image_id, rows, cols, data FROM keypoints").fetchall()
+        let num_images : Int = result_images_ids.__len__().__index__()
+        # TODO: Add in dummy one since images indexing starts from one
+        # self.images = Pointer[Image].alloc(num_images)
 
-        # Get all images
+        for i in range(num_images):
+            debug_assert(result_images_ids[i][0].__index__() == result_image_kps[i][0].__index__(), "Image ID / Keypoints aren't lined up in DB")
+            let image_id = result_images_ids[i][0].__index__()
+            let cam_id = result_images_ids[i][1].__index__()
+            let rows = result_image_kps[i][1].__index__()
+            let cols = result_image_kps[i][2].__index__()
+            let kp_np = np.frombuffer(result_image_kps[i][3], np.float32).reshape((rows, cols))
+            let kp = np2tensor2d[DType.float32](kp_np, m=2)
 
-        # Get all matches
+        # ------------------------- Get all matches ------------------------- #
+        var result_matches = cur.execute("SELECT pair_id, rows, cols, data FROM two_view_geometries").fetchall()
+        let num_pairs = result_matches.__len__().__index__()
+        # self.matches = Pointer[Match].alloc(num_pairs)
 
+        for r in result_matches:
+            let pair_id = r[0].__index__()
+            let img2_id = pair_id % 2147483647
+            let img1_id = (pair_id - img2_id) / 2147483647
+            
+            let row = r[1].__index__()
+            let col = r[2].__index__()
+            let match_np = np.frombuffer(r[3], np.uint32).reshape((row, col))
+            let matches = np2tensor2d[DType.uint32](match_np)
 
     fn register(inout self):
         pass
@@ -100,7 +103,10 @@ struct SfM:
 
 fn main() raises:
     let dir_in = "trex"
-    let dir_db = "data"
     var sfm = SfM(Path(dir_in))
     sfm.frontend()
-    # run_colmap_frontend(dir_in, dir_db)
+
+    # var test = Pointer[Test].alloc(10)
+    # # test.alloc(10)
+    # test.store(1, Test(0))
+    # print(test[1].fx)
