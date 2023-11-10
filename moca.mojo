@@ -2,37 +2,6 @@ from tensor import Tensor, TensorShape, TensorSpec
 from utils.index import Index
 from algorithm import vectorize_unroll
 
-
-struct Vector[T: DType, size: Int]:
-    var data: SIMD[T, size]
-
-    fn __init__(inout self):
-        self.data = SIMD[T,size]()
-
-    fn __init__(inout self, data: SIMD[T, size]):
-        self.data = data
-
-    fn __getitem__(self, index: Int) -> SIMD[T, 1]:
-        return self.data[index]
-
-    fn __setitem__(inout self, index: Int, val: SIMD[T, 1]):
-        self.data.__setitem__(index, val)
-
-    fn __add__(self, rhs: Vector[T,size]) -> Vector[T, size]:
-        return self.data + rhs.data
-
-struct Matrix[T: DType, rows: Int, cols: Int]:
-    var data: SIMD[T,rows*cols]
-
-    fn __init__(inout self):
-        self.data = SIMD[T,rows*cols]()
-
-    fn __getitem__(self, row: Int, col: Int) -> SIMD[T,1]:
-        return self.data[row*cols+col]
-
-    fn __setitem__(inout self, row: Int, col: Int, val: SIMD[T,1]):
-        self.data[row*cols+col] = val 
-
 fn add[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
@@ -57,7 +26,7 @@ fn subtract[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtyp
     return result
 
 
-fn mul[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+fn multiply[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -69,7 +38,7 @@ fn mul[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     return result
 
 
-fn div[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+fn divide[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -93,66 +62,25 @@ fn dot[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     return result
 
 
-fn print_matrix[dtype: DType](x: Tensor[dtype]):
-    for i in range(x.shape()[0]):
-        for j in range(x.shape()[1]):
-            print_no_newline(x[i, j], " ")
-        print()
+fn forward_substitution_solve[type: DType](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = L.shape()[0]
+    var x = b
+    for i in range(n):
+        for j in range(i):
+            x[i] -= L[i,j]*x[j]
+        x[i] /= L[i,i]
 
+    return x
 
-def main():
-    var x = Tensor[DType.float64](2, 2)
-    x[Index(0, 0)] = 1.0
-    x[Index(0, 1)] = 0.0
-    x[Index(1, 0)] = 0.0
-    x[Index(1, 1)] = 1.0
-    print_matrix(x)
-    let y = x
-    print_matrix(y)
-    let z = add(x, y)
-    print("z")
-    print_matrix(z)
-    let zz = subtract(x, y)
-    print("zz")
-    print_matrix(zz)
+fn back_substitution_solve[type: DType](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = U.shape()[0]
+    var x = b
+    for i in range(n-1, -1, -1):
+        for j in range(i+1, n):
+            x[i] -= U[i,j]*x[j]
+        x[i] /= U[i,i]
+    return x
 
-    let aa = mul(x, y)
-    print("mul")
-    print_matrix(aa)
-
-    let bb = div(x, y)
-    print("div")
-    print_matrix(bb)
-
-    let cc = dot(x, y)
-    print("dot")
-    print_matrix(cc)
-
-    var v = Vector[DType.float64, 3]()
-    v[0] = 0
-    v[1] = 1
-    v[2] = 2
-    print(v[0])
-    print(v[1])
-
-    var u = Vector[DType.float64, 3]()
-    u[0] = 0
-    u[1] = 1
-    u[2] = 2
-    let w = v + u
-    print(w[0])
-    print(w[1])
-    print(w[2])
-
-
-    var A = Matrix[DType.float64, 3, 3]()
-    A[0,0] = 1
-    A[0,1] = 0
-    A[0,2] = 0
-    A[1,0] = 0
-    A[1,1] = 1
-    A[1,2] = 0
-    A[2,0] = 0
-    A[2,1] = 0
-    A[2,2] = 1
-    print(A[2,2])
+alias Vector2d = SIMD[DType.float64, 2]
+alias Vector3d = SIMD[DType.float64, 4]
+alias Vector4d = SIMD[DType.float64, 4]
