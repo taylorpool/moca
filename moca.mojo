@@ -102,6 +102,19 @@ fn forward_substitution_solve[
     return x
 
 
+fn forward_substitution_solve_transpose[
+    type: DType
+](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = U.shape()[0]
+    var x = b
+    for i in range(n):
+        for j in range(i):
+            x[i] -= U[j, i] * x[j]
+        x[i] /= U[i, i]
+
+    return x
+
+
 fn back_substitution_solve[
     type: DType
 ](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
@@ -111,6 +124,18 @@ fn back_substitution_solve[
         for j in range(i + 1, n):
             x[i] -= U[i, j] * x[j]
         x[i] /= U[i, i]
+    return x
+
+
+fn back_substitution_solve_transpose[
+    type: DType
+](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = L.shape()[0]
+    var x = b
+    for i in range(n - 1, -1, -1):
+        for j in range(i + 1, n):
+            x[i] -= L[j, i] * x[j]
+        x[i] /= L[i, i]
     return x
 
 
@@ -152,6 +177,16 @@ fn uut_decompose[type: DType](A: Tensor[type]) -> Tensor[type]:
         U[i_i] = math.sqrt(U[i, i])
 
     return U
+
+
+fn llt_solve[type: DType](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let y = forward_substitution_solve(L, b)
+    return back_substitution_solve_transpose(L, y)
+
+
+fn uut_solve[type: DType](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let y = back_substitution_solve(U, b)
+    return forward_substitution_solve_transpose(U, y)
 
 
 @value
