@@ -89,15 +89,32 @@ fn matrix_vector_multiply[
     return result
 
 
+fn matrix_transpose_vector_multiply[
+    type: DType
+](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
+    let m = mat.shape()[1]
+    let n = mat.shape()[0]
+    var result = Tensor[type](m)
+    for j in range(n):
+        for i in range(m):
+            result[i] += mat[j, i] * vec[j]
+
+    return result
+
+
 fn forward_substitution_solve[
     type: DType
 ](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let n = L.shape()[0]
-    var x = b
+    let m = L.shape()[0]
+    let n = L.shape()[1]
+    let diff = m - n
+    var x = Tensor[type](n)
     for i in range(n):
+        let i_diff = i + diff
+        x[i] = b[i_diff]
         for j in range(i):
-            x[i] -= L[i, j] * x[j]
-        x[i] /= L[i, i]
+            x[i] -= L[i_diff, j] * x[j]
+        x[i] /= L[i_diff, i]
 
     return x
 
@@ -105,12 +122,16 @@ fn forward_substitution_solve[
 fn forward_substitution_solve_transpose[
     type: DType
 ](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let m = b.shape()[0]
     let n = U.shape()[0]
-    var x = b
+    let diff = m - n
+    var x = Tensor[type](n)
     for i in range(n):
+        let i_diff = i + diff
+        x[i] = b[i_diff]
         for j in range(i):
-            x[i] -= U[j, i] * x[j]
-        x[i] /= U[i, i]
+            x[i] -= U[j, i_diff] * x[j]
+        x[i] /= U[i_diff, i_diff]
 
     return x
 
@@ -118,24 +139,32 @@ fn forward_substitution_solve_transpose[
 fn back_substitution_solve[
     type: DType
 ](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let n = U.shape()[0]
-    var x = b
+    let m = U.shape()[0]
+    let n = U.shape()[1]
+    let diff = m - n
+    var x = Tensor[type](n)  # b
     for i in range(n - 1, -1, -1):
+        let i_diff = i - diff
+        x[i] = b[i_diff]
         for j in range(i + 1, n):
-            x[i] -= U[i, j] * x[j]
-        x[i] /= U[i, i]
+            x[i] -= U[i_diff, j] * x[j]
+        x[i] /= U[i_diff, i_diff]
     return x
 
 
 fn back_substitution_solve_transpose[
     type: DType
 ](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let m = b.shape()[0]
     let n = L.shape()[0]
-    var x = b
+    let diff = m - n
+    var x = Tensor[type](n)
     for i in range(n - 1, -1, -1):
+        let i_diff = i - diff
+        x[i] = b[i_diff]
         for j in range(i + 1, n):
-            x[i] -= L[j, i] * x[j]
-        x[i] /= L[i, i]
+            x[i] -= L[j, i_diff] * x[j]
+        x[i] /= L[i_diff, i_diff]
     return x
 
 
@@ -255,6 +284,11 @@ fn qr_decompose[type: DType](A: Tensor[type], mode: StringRef = "reduced") -> QR
         return qr_full_decompose(A)
     else:
         return qr_reduced_decompose(A)
+
+
+fn qr_full_solve[type: DType](qr: QR[type], b: Tensor[type]) -> Tensor[type]:
+    let y = matrix_transpose_vector_multiply(qr.Q, b)
+    return back_substitution_solve(qr.R, y)
 
 
 alias Vector2d = SIMD[DType.float64, 2]
