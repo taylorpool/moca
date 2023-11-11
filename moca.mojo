@@ -179,15 +179,16 @@ fn qr_full_decompose[type: DType](A: Tensor[type]) -> QR[type]:
         # Compute u
         let u_dim = n - k
         var u = Tensor[type](u_dim)
-        var u_norm: SIMD[type, 1] = 0
-        for i in range(u_dim):
+        var v: SIMD[type, 1] = 0
+        u[0] = qr.R[k, k]
+        for i in range(1, u_dim):
             u[i] = qr.R[i + k, k]
-            u_norm += u[i] * u[i]
-        u_norm = math.sqrt(u_norm)
+            v += u[i] * u[i]
         if u[0] >= 0:
-            u[0] += u_norm
+            u[0] += math.sqrt(v + u[0] * u[0])
         else:
-            u[0] -= u_norm
+            u[0] -= math.sqrt(v + u[0] * u[0])
+        let u_norm = math.sqrt(v + u[0] * u[0])
         for i in range(u_dim):
             u[i] /= u_norm
 
