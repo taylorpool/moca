@@ -58,9 +58,9 @@ def verify_lookup(factors, seen, lm_lookup):
             ), f"Somethings off! {seen[(f.id_pose, f.id_kp)]} != {id_lm}"
 
 
-def frontend(dir_img: str, force=False) -> SfMData:
+def frontend(dir_img_str: str, force=False) -> SfMData:
     # ------------------------- Run frontend ------------------------- #
-    dir_img = Path(dir_img)
+    dir_img = Path(dir_img_str)
     file_db = dir_img / "database.db"
     if force and file_db.exists():
         file_db.unlink()
@@ -109,11 +109,11 @@ def frontend(dir_img: str, force=False) -> SfMData:
         matches.append(Match(id_img1, id_img2, m))
 
     # ------------------------- Convert to projection factors ------------------------- #
-    seen = dict()  # holds tuples of (img_id, kp) -> lm_id
-    lm_lookup = dict()  # holds lm_id -> [factor_idx, ...]
-    factors = []
+    seen: dict[tuple[int, int], int] = dict()  # holds tuples of (img_id, kp) -> lm_id
+    lm_lookup: dict[int, list[int]] = dict()  # holds lm_id -> [factor_idx, ...]
+    factors: list[ProjectionFactor] = []
     idx_lm_count = 0
-    idx_lm_removed = []
+    idx_lm_removed: list[int] = []
     for match in tqdm(matches, leave=False):
         for idx_kp1, idx_kp2 in match.matches:
             tuple1 = (match.id1, idx_kp1)
