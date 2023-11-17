@@ -37,16 +37,28 @@ class Match:
     matches: np.ndarray
 
 
+@dataclass
+class SfMData:
+    num_poses: int
+    num_lm: int
+    cameras: list[PinholeCamera]
+    factors: list[ProjectionFactor]
+
+
+# Helper to make sure things are straight when running
 def verify_lookup(factors, seen, lm_lookup):
     for id_lm, id_factors in lm_lookup.items():
         for id in id_factors:
+            print(id)
             f = factors[id]
             assert (
                 seen[(f.id_pose, f.id_kp)] == id_lm
             ), f"Somethings off! {seen[(f.id_pose, f.id_kp)]} != {id_lm}"
 
 
-def colmapdb2sfm(path: str) -> tuple[list[PinholeCamera], list[ProjectionFactor], int]:
+def colmapdb2sfm(
+    path: str,
+) -> tuple[list[PinholeCamera], int, int, list[ProjectionFactor]]:
     cur = sqlite3.connect(path).cursor()
 
     cameras = []
@@ -87,11 +99,12 @@ def colmapdb2sfm(path: str) -> tuple[list[PinholeCamera], list[ProjectionFactor]
         matches.append(Match(id_img1, id_img2, m))
 
     # ------------------------- Convert to projection factors ------------------------- #
-    factors = []
     seen = dict()  # holds tuples of (img_id, kp) -> lm_id
     lm_lookup = dict()  # holds lm_id -> [factor_idx, ...]
+    factors = []
     idx_lm_count = 0
-    for match in tqdm(matches, leave=True):
+    idx_lm_removed = []
+    for match in tqdm(matches, leave=False):
         for idx_kp1, idx_kp2 in match.matches:
             tuple1 = (match.id1, idx_kp1)
             tuple2 = (match.id2, idx_kp2)
@@ -99,22 +112,18 @@ def colmapdb2sfm(path: str) -> tuple[list[PinholeCamera], list[ProjectionFactor]
             seen_in_2 = tuple2 in seen
 
             # if both seen, do some shuffling
-            # verify_lookup(factors, seen, lm_lookup)
             if seen_in_1 and seen_in_2:
                 idx_lm1 = seen[tuple1]
                 idx_lm2 = seen[tuple2]
                 # Relabel if they're not the same
                 if idx_lm1 != idx_lm2:
-                    print("Relabeling")
                     idxs_factors = lm_lookup.pop(idx_lm2)
-                    for i in idxs_factors:
-                        factors[i].id_lm = idx_lm1
-                        assert (factors[i].id_pose, factors[i].id_kp) in seen
-                        assert seen[(factors[i].id_pose, factors[i].id_kp)] == idx_lm2
-                        seen[(factors[i].id_pose, factors[i].id_kp)] = idx_lm1
-
                     lm_lookup[idx_lm1].extend(idxs_factors)
-                    # verify_lookup(factors, seen, lm_lookup)
+                    for i in idxs_factors:
+                        seen[(factors[i].id_pose, factors[i].id_kp)] = idx_lm1
+                        factors[i].id_lm = idx_lm1
+
+                    idx_lm_removed.append(idx_lm2)
 
             # If only seen in one before
             elif seen_in_1 or seen_in_2:
@@ -125,9 +134,12 @@ def colmapdb2sfm(path: str) -> tuple[list[PinholeCamera], list[ProjectionFactor]
 
             # If never seen before
             else:
-                lm_lookup[idx_lm_count] = []
-                idx_lm = idx_lm_count
-                idx_lm_count += 1
+                if len(idx_lm_removed) != 0:
+                    idx_lm = idx_lm_removed.pop(0)
+                else:
+                    idx_lm = idx_lm_count
+                    idx_lm_count += 1
+                lm_lookup[idx_lm] = []
 
             # Add in factors
             if not seen_in_1:
@@ -149,8 +161,23 @@ def colmapdb2sfm(path: str) -> tuple[list[PinholeCamera], list[ProjectionFactor]
                 )
                 seen[(match.id2, idx_kp2)] = idx_lm
 
-            assert seen[(match.id1, idx_kp1)] == seen[(match.id2, idx_kp2)]
             # verify_lookup(factors, seen, lm_lookup)
+
+    # Reorganize a bit so there's no holes!
+    for idx_lm in idx_lm_removed:
+        idx_to_rm = idx_lm_count - 1
+
+        idxs_factors = lm_lookup.pop(idx_to_rm)
+        lm_lookup[idx_lm] = idxs_factors
+        for i in idxs_factors:
+            seen[(factors[i].id_pose, factors[i].id_kp)] = idx_lm
+            factors[i].id_lm = idx_lm
+
+        idx_lm_count -= 1
+
+    # verify_lookup(factors, seen, lm_lookup)
+
+    return SfMData(len(images), idx_lm_count, cameras, factors)
 
 
 if __name__ == "__main__":
