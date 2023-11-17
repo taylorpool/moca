@@ -1,14 +1,13 @@
 @register_passable("trivial")
 struct PinholeCamera:
-    # TODO: Include extrinsics here too?
     # See: https://github.com/colmap/colmap/blob/main/src/colmap/sensor/models.h#L206
     var cal: SIMD[DType.float64, 4]
 
     fn __init__(fx: Float64, fy: Float64, px: Float64, py: Float64) -> Self:
-        return PinholeCamera {cal: SIMD[DType.float64, 4](fx, fy, px, py)}
+        return Self {cal: SIMD[DType.float64, 4](fx, fy, px, py)}
 
     fn __init__(cal: SIMD[DType.float64, 4]) -> Self:
-        return PinholeCamera {cal: cal}
+        return Self {cal: cal}
 
     fn project(inout self, X: Tensor[DType.float64]) -> Tensor[DType.float64]:
         let w = X[2]
@@ -19,11 +18,11 @@ struct PinholeCamera:
 
     @always_inline
     @staticmethod
-    fn identity() -> PinholeCamera:
+    fn identity() -> Self:
         return PinholeCamera(0, 0, 0, 0)
 
     @always_inline
-    fn __add__(self, other: PinholeCamera) -> PinholeCamera:
+    fn __add__(self, other: PinholeCamera) -> Self:
         return self.cal + other.cal
 
     @always_inline

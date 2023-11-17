@@ -3,14 +3,12 @@ from python import Python
 from tensor import TensorShape
 from utils.index import Index
 
-from pinhole import PinholeCamera
-from se3 import SE3
-from so3 import SO3
+from .pinhole import PinholeCamera
+from .se3 import SE3
+from .so3 import SO3
 
 # TODO LIST
-# - Figure out how to store Image / Matches in SfM
 # - SE(3) class for optimization
-# - Fix loading binary -> numpy -> Tensor
 
 
 fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
@@ -58,8 +56,10 @@ struct SfM:
         let num_cam = sfm_data.cameras.__len__().__index__()
         let num_factors = sfm_data.factors.__len__().__index__()
 
+        # pose & landmarks will be filled out as we begin
         self.poses = InlinedFixedVector[SE3](num_poses)
         self.landmarks = InlinedFixedVector[SIMD[DType.float64, 4]](num_lm)
+        # camers & factors we'll load in now
         self.cameras = InlinedFixedVector[PinholeCamera](num_cam)
         self.factors = InlinedFixedVector[ProjectionFactor](num_factors)
 
@@ -88,9 +88,3 @@ struct SfM:
 
     fn optimize(inout self):
         pass
-
-
-fn main() raises:
-    let dir_in = "trex"
-    var sfm = SfM(Path(dir_in))
-    sfm.frontend()
