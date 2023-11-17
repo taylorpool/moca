@@ -2,6 +2,8 @@ from dataclasses import dataclass
 import sqlite3
 import numpy as np
 from tqdm import tqdm
+import pycolmap
+from pathlib import Path
 
 
 @dataclass
@@ -56,15 +58,23 @@ def verify_lookup(factors, seen, lm_lookup):
             ), f"Somethings off! {seen[(f.id_pose, f.id_kp)]} != {id_lm}"
 
 
-def colmapdb2sfm(
-    path: str,
-) -> tuple[list[PinholeCamera], int, int, list[ProjectionFactor]]:
-    cur = sqlite3.connect(path).cursor()
+def frontend(dir_img: str, force=False) -> SfMData:
+    # ------------------------- Run frontend ------------------------- #
+    dir_img = Path(dir_img)
+    file_db = dir_img / "database.db"
+    if force and file_db.exists():
+        file_db.unlink()
+    if file_db.exists():
+        print("COLMAP database already exists, loading it...")
+    else:
+        pycolmap.extract_features(file_db, dir_img)
+        pycolmap.match_exhaustive(file_db)
+
+    cur = sqlite3.connect(file_db).cursor()
 
     cameras = []
     images = []
     matches = []
-
     # ------------------------- Get all cameras ------------------------- #
     result_cameras = cur.execute("SELECT camera_id, params FROM cameras").fetchall()
     for id, params in result_cameras:
@@ -181,4 +191,4 @@ def colmapdb2sfm(
 
 
 if __name__ == "__main__":
-    colmapdb2sfm("data/database.db")
+    frontend("trex")

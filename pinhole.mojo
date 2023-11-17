@@ -1,16 +1,3 @@
-@value
-struct Image:
-    var id_cam: Int32
-    var kp: Tensor[DType.float32]
-
-
-@value
-struct MatchPair:
-    var id1: Int32
-    var id2: Int32
-    var matches: Tensor[DType.uint32]
-
-
 @register_passable("trivial")
 struct PinholeCamera:
     # TODO: Include extrinsics here too?
