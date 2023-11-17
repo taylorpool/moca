@@ -294,3 +294,5 @@ fn qr_full_solve[type: DType](qr: QR[type], b: Tensor[type]) -> Tensor[type]:
 alias Vector2d = SIMD[DType.float64, 2]
 alias Vector3d = SIMD[DType.float64, 4]
 alias Vector4d = SIMD[DType.float64, 4]
+alias Vector5d = SIMD[DType.float64, 8]
+alias Vector6d = SIMD[DType.float64, 8]

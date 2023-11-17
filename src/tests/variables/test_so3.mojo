@@ -9,6 +9,8 @@ from src.tests.util import (
     assert_almost_equal_tensor,
 )
 
+# TODO: Use more interesting quaternion, edges cases might be being missed
+
 
 def test_expmap() -> NoneType:
     print("# so3 expmap")
@@ -87,9 +89,43 @@ def test_retract() -> NoneType:
     assert_almost_equal(q_des, q_mine)
 
 
+def test_inv() -> NoneType:
+    print("# so3 matrix")
+    R = Python.import_module("scipy.spatial.transform").Rotation
+    np = Python.import_module("numpy")
+
+    two = math.rsqrt(SIMD[DType.float64, 1](2))
+    q1py = np.array([0, 0, two, two])
+    q1 = np2simd[4](q1py)
+
+    q_des = np2simd[4](R.from_quat(q1py).inv().as_quat())
+    q_mine = SO3(q1).inv().quat
+
+    assert_almost_equal(q_des, q_mine)
+
+
+def test_rotate() -> NoneType:
+    print("# so3 matrix")
+    R = Python.import_module("scipy.spatial.transform").Rotation
+    np = Python.import_module("numpy")
+
+    two = math.rsqrt(SIMD[DType.float64, 1](2))
+    q1py = np.array([0, 0, two, two])
+    q1 = np2simd[4](q1py)
+    ppy = np.array([1, 2, 3])
+    p = np2simd[4](ppy)
+
+    p_des = np2simd[4](R.from_quat(q1py).apply(ppy))
+    p_mine = SO3(q1) * p
+
+    assert_almost_equal(p_des, p_mine)
+
+
 fn main() raises:
     test_expmap()
     test_mult()
     test_identity()
     test_matrix()
     test_retract()
+    test_inv()
+    test_rotate()

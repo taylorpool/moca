@@ -16,7 +16,7 @@ struct SO3:
         return Self {quat: mc.Vector4d(x, y, z, w)}
 
     fn __init__(quat: mc.Vector4d) -> Self:
-        var norm = (quat * quat).reduce_add()
+        let norm = (quat * quat).reduce_add()
         # TODO Change to warning?
         if (norm - 1.0) ** 2 > 1e-3:
             print("Initialized with quaternion norm", norm)
@@ -65,6 +65,22 @@ struct SO3:
         mat[Index(2, 2)] = 2 * (w * w + z * z) - 1
 
         return mat
+
+    fn __invert__(self) -> Self:
+        let x = self.quat[0]
+        let y = self.quat[1]
+        let z = self.quat[2]
+        let w = self.quat[3]
+        return Self(-x, -y, -z, w)
+
+    fn inv(self) -> Self:
+        return ~self
+
+    @always_inline
+    fn __mul__(self, p: mc.Vector3d) -> mc.Vector3d:
+        let p_rot = SO3(p[0], p[1], p[2], 0)
+        let inv = ~self
+        return (self * p_rot * inv).quat
 
     @always_inline
     fn __mul__(self, other: SO3) -> SO3:
