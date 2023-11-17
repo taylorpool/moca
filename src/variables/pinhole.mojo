@@ -1,12 +1,16 @@
+from tensor import Tensor
+import src.moca as mc
+
+
 @register_passable("trivial")
 struct PinholeCamera:
     # See: https://github.com/colmap/colmap/blob/main/src/colmap/sensor/models.h#L206
-    var cal: SIMD[DType.float64, 4]
+    var cal: mc.Vector4d
 
     fn __init__(fx: Float64, fy: Float64, px: Float64, py: Float64) -> Self:
-        return Self {cal: SIMD[DType.float64, 4](fx, fy, px, py)}
+        return Self {cal: mc.Vector4d(fx, fy, px, py)}
 
-    fn __init__(cal: SIMD[DType.float64, 4]) -> Self:
+    fn __init__(cal: mc.Vector4d) -> Self:
         return Self {cal: cal}
 
     fn project(inout self, X: Tensor[DType.float64]) -> Tensor[DType.float64]:
@@ -19,10 +23,10 @@ struct PinholeCamera:
     @always_inline
     @staticmethod
     fn identity() -> Self:
-        return PinholeCamera(0, 0, 0, 0)
+        return Self(0, 0, 0, 0)
 
     @always_inline
-    fn __add__(self, other: PinholeCamera) -> Self:
+    fn __add__(self, other: Self) -> Self:
         return self.cal + other.cal
 
     @always_inline
