@@ -16,6 +16,10 @@ struct SO3:
         return Self {quat: mc.Vector4d(x, y, z, w)}
 
     fn __init__(quat: mc.Vector4d) -> Self:
+        var norm = (quat * quat).reduce_add()
+        # TODO Change to warning?
+        if (norm - 1.0) ** 2 > 1e-3:
+            print("Initialized with quaternion norm", norm)
         return Self {quat: quat}
 
     @always_inline

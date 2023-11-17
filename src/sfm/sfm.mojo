@@ -72,7 +72,8 @@ struct SfM:
                 pyfloat[DType.float64](cam.px),
                 pyfloat[DType.float64](cam.py),
             )
-            self.cameras.append(PinholeCamera(cal))
+            # TODO: This is throwing an error...
+            # self.cameras.append(PinholeCamera(cal))
 
         for factor in sfm_data.factors:
             let measured = SIMD[DType.float64, 2](
