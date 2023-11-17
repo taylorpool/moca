@@ -3,9 +3,9 @@ from python import Python
 from tensor import TensorShape
 from utils.index import Index
 
-from .pinhole import PinholeCamera
-from .se3 import SE3
-from .so3 import SO3
+from src.variables.pinhole import PinholeCamera
+from src.variables.se3 import SE3
+from src.variables.so3 import SO3
 
 # TODO LIST
 # - SE(3) class for optimization
