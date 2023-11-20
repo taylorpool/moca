@@ -2,7 +2,7 @@ from src.variables import SO3, SE3
 from utils.index import Index
 from python import Python
 import math
-from src.tests.util import (
+from src.util import (
     np2simd,
     np2tensor2d,
     assert_almost_equal,
