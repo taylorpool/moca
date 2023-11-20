@@ -45,17 +45,32 @@ class SfMData:
     num_lm: int
     cameras: list[PinholeCamera]
     factors: list[ProjectionFactor]
+    pair_indices: np.ndarray
 
 
 # Helper to make sure things are straight when running
 def verify_lookup(factors, seen, lm_lookup):
     for id_lm, id_factors in lm_lookup.items():
         for id in id_factors:
-            print(id)
             f = factors[id]
+            assert f.id_lm == id_lm, f"Somethings off! {f.id_lm} lm in {id_lm} lookup"
             assert (
-                seen[(f.id_pose, f.id_kp)] == id_lm
-            ), f"Somethings off! {seen[(f.id_pose, f.id_kp)]} != {id_lm}"
+                seen[(f.id_pose, f.id_kp)] in id_factors
+            ), f"Somethings off! {seen[(f.id_pose, f.id_kp)]} not in {id_factors}, has {factors[seen[(f.id_pose, f.id_kp)]]} lm_id"
+
+
+def pad_to_dense(M, val=0):
+    """Appends the minimal required amount of zeroes at the end of each
+    array in the jagged array `M`, such that `M` looses its jagedness.
+    https://stackoverflow.com/questions/37676539/numpy-padding-matrix-of-different-row-size
+    """
+
+    maxlen = max(len(r) for r in M)
+
+    Z = np.full((len(M), maxlen), val)
+    for enu, row in enumerate(M):
+        Z[enu, : len(row)] = row
+    return Z
 
 
 def frontend(dir_img_str: str, force=False) -> SfMData:
@@ -109,12 +124,17 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
         matches.append(Match(id_img1, id_img2, m))
 
     # ------------------------- Convert to projection factors ------------------------- #
-    seen: dict[tuple[int, int], int] = dict()  # holds tuples of (img_id, kp) -> lm_id
+    seen: dict[
+        tuple[int, int], int
+    ] = dict()  # holds tuples of (img_id, kp) -> factor_idx
     lm_lookup: dict[int, list[int]] = dict()  # holds lm_id -> [factor_idx, ...]
+    pair_factor_list = []
     factors: list[ProjectionFactor] = []
+
     idx_lm_count = 0
     idx_lm_removed: list[int] = []
     for match in tqdm(matches, leave=False):
+        factor_idx_list = []
         for idx_kp1, idx_kp2 in match.matches:
             tuple1 = (match.id1, idx_kp1)
             tuple2 = (match.id2, idx_kp2)
@@ -123,14 +143,13 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
 
             # if both seen, do some shuffling
             if seen_in_1 and seen_in_2:
-                idx_lm1 = seen[tuple1]
-                idx_lm2 = seen[tuple2]
+                idx_lm2 = factors[seen[tuple2]].id_lm
+                idx_lm1 = factors[seen[tuple1]].id_lm
                 # Relabel if they're not the same
                 if idx_lm1 != idx_lm2:
                     idxs_factors = lm_lookup.pop(idx_lm2)
                     lm_lookup[idx_lm1].extend(idxs_factors)
                     for i in idxs_factors:
-                        seen[(factors[i].id_pose, factors[i].id_kp)] = idx_lm1
                         factors[i].id_lm = idx_lm1
 
                     idx_lm_removed.append(idx_lm2)
@@ -138,9 +157,9 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
             # If only seen in one before
             elif seen_in_1 or seen_in_2:
                 if seen_in_1:
-                    idx_lm = seen[tuple1]
+                    idx_lm = factors[seen[tuple1]].id_lm
                 else:
-                    idx_lm = seen[tuple2]
+                    idx_lm = factors[seen[tuple2]].id_lm
 
             # If never seen before
             else:
@@ -155,23 +174,35 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
             if not seen_in_1:
                 img = images[match.id1]
                 lm_lookup[idx_lm].append(len(factors))
+                seen[tuple1] = len(factors)
                 factors.append(
                     ProjectionFactor(
-                        img.id, img.id_cam, idx_lm, idx_kp1, *img.kp[idx_kp1]
+                        img.id,
+                        img.id_cam,
+                        idx_lm,
+                        idx_kp1,
+                        *img.kp[idx_kp1],
                     )
                 )
-                seen[(match.id1, idx_kp1)] = idx_lm
+
             if not seen_in_2:
                 img = images[match.id2]
                 lm_lookup[idx_lm].append(len(factors))
+                seen[tuple2] = len(factors)
                 factors.append(
                     ProjectionFactor(
-                        img.id, img.id_cam, idx_lm, idx_kp2, *img.kp[idx_kp2]
+                        img.id,
+                        img.id_cam,
+                        idx_lm,
+                        idx_kp2,
+                        *img.kp[idx_kp2],
                     )
                 )
-                seen[(match.id2, idx_kp2)] = idx_lm
 
-            # verify_lookup(factors, seen, lm_lookup)
+            factor_idx_list.append(seen[tuple1])
+            factor_idx_list.append(seen[tuple2])
+
+        pair_factor_list.append(factor_idx_list)
 
     # Reorganize a bit so there's no holes!
     for idx_lm in idx_lm_removed:
@@ -180,14 +211,19 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
         idxs_factors = lm_lookup.pop(idx_to_rm)
         lm_lookup[idx_lm] = idxs_factors
         for i in idxs_factors:
-            seen[(factors[i].id_pose, factors[i].id_kp)] = idx_lm
             factors[i].id_lm = idx_lm
 
         idx_lm_count -= 1
 
-    # verify_lookup(factors, seen, lm_lookup)
+    verify_lookup(factors, seen, lm_lookup)
 
-    return SfMData(len(images), idx_lm_count, cameras, factors)
+    return SfMData(
+        len(images),
+        idx_lm_count,
+        cameras,
+        factors,
+        pad_to_dense(pair_factor_list, -1),
+    )
 
 
 if __name__ == "__main__":

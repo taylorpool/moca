@@ -40,6 +40,21 @@ struct SO3:
         return Self(vec)
 
     @always_inline
+    @staticmethod
+    fn skew(xi: mc.Vector3d) -> Tensor[DType.float64]:
+        var out = Tensor[DType.float64](3, 3)
+        out[Index(2, 1)] = xi[0]
+        out[Index(1, 2)] = -xi[0]
+
+        out[Index(0, 2)] = xi[0]
+        out[Index(2, 0)] = -xi[0]
+
+        out[Index(1, 0)] = xi[0]
+        out[Index(0, 1)] = -xi[0]
+
+        return out
+
+    @always_inline
     fn as_mat(self) -> Tensor[DType.float64]:
         var mat = Tensor[DType.float64](3, 3)
 
