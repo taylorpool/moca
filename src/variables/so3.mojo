@@ -7,19 +7,26 @@ import src.moca as mc
 struct SO3:
     var quat: mc.Vector4d
 
-    fn __init__(
-        x: Float64,
-        y: Float64,
-        z: Float64,
-        w: Float64,
-    ) -> Self:
+    fn __init__(x: Float64, y: Float64, z: Float64, w: Float64) -> Self:
         return Self {quat: mc.Vector4d(x, y, z, w)}
 
     fn __init__(quat: mc.Vector4d) -> Self:
-        let norm = (quat * quat).reduce_add()
-        # TODO Change to warning?
-        if (norm - 1.0) ** 2 > 1e-3:
-            print("Initialized with quaternion norm", norm)
+        return Self {quat: quat}
+
+    fn __init__(
+        x: Float64, y: Float64, z: Float64, w: Float64, normalize: Bool
+    ) -> Self:
+        let norm = sqrt(x * x + y * y + z * z + w * w)
+        var quat = mc.Vector4d(x, y, z, w)
+        if normalize:
+            quat /= norm
+        return Self {quat: quat}
+
+    fn __init__(quat_: mc.Vector4d, normalize: Bool) -> Self:
+        let norm = (quat_ * quat_).reduce_add()
+        var quat = quat_
+        if normalize:
+            quat /= norm
         return Self {quat: quat}
 
     @always_inline
@@ -34,9 +41,15 @@ struct SO3:
         var vec = xi
         vec[3] = 0
 
-        let theta = sqrt[DType.float64]((vec * vec).reduce_add())
-        vec = sin(theta / 2) * vec / theta
-        vec[3] = cos(theta / 2)
+        let theta2 = (vec * vec).reduce_add()
+        if theta2 < 1e-2:
+            vec *= 0.5
+            vec[3] = 1
+        else:
+            let theta = sqrt[DType.float64](theta2)
+            vec *= sin(theta / 2) / theta
+            vec[3] = cos(theta / 2)
+
         return Self(vec)
 
     @always_inline
@@ -46,11 +59,11 @@ struct SO3:
         out[Index(2, 1)] = xi[0]
         out[Index(1, 2)] = -xi[0]
 
-        out[Index(0, 2)] = xi[0]
-        out[Index(2, 0)] = -xi[0]
+        out[Index(0, 2)] = xi[1]
+        out[Index(2, 0)] = -xi[1]
 
-        out[Index(1, 0)] = xi[0]
-        out[Index(0, 1)] = -xi[0]
+        out[Index(1, 0)] = xi[2]
+        out[Index(0, 1)] = -xi[2]
 
         return out
 

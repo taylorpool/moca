@@ -9,6 +9,7 @@ from src.variables.pinhole import PinholeCamera
 from src.variables.se3 import SE3
 from src.variables.so3 import SO3
 from src.variables.landmark import Landmark
+from src.sfm.factors import ProjectionFactor
 
 
 fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
@@ -17,15 +18,6 @@ fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
 
 fn pyint(i: PythonObject) -> Int:
     return i.__index__()
-
-
-@value
-@register_passable("trivial")
-struct ProjectionFactor:
-    var id_pose: Int32  # aka image #
-    var id_cam: Int32
-    var lm_id: Int32
-    var measured: SIMD[DType.float64, 2]
 
 
 struct SfM:

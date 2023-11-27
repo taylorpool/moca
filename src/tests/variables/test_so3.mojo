@@ -90,7 +90,7 @@ def test_retract() -> NoneType:
 
 
 def test_inv() -> NoneType:
-    print("# so3 matrix")
+    print("# so3 inv")
     R = Python.import_module("scipy.spatial.transform").Rotation
     np = Python.import_module("numpy")
 
@@ -105,7 +105,7 @@ def test_inv() -> NoneType:
 
 
 def test_rotate() -> NoneType:
-    print("# so3 matrix")
+    print("# so3 rotate")
     R = Python.import_module("scipy.spatial.transform").Rotation
     np = Python.import_module("numpy")
 

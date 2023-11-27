@@ -64,8 +64,12 @@ struct PinholeCamera:
         return self.cal[3]
 
     @always_inline
-    fn as_mat(self) -> Tensor[DType.float64]:
-        let out = Tensor[DType.float64](3, 4)
+    fn as_mat(self, small: Bool = False) -> Tensor[DType.float64]:
+        var out: Tensor[DType.float64]
+        if small:
+            out = Tensor[DType.float64](3, 3)
+        else:
+            out = Tensor[DType.float64](3, 4)
         out[Index(0, 0)] = self.fx()
         out[Index(1, 1)] = self.fy()
         out[Index(2, 2)] = 1
