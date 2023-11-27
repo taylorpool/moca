@@ -2,6 +2,36 @@ from tensor import Tensor, TensorShape, TensorSpec
 from utils.index import Index
 from algorithm import vectorize_unroll
 import math
+import random
+
+
+# ------------------------- EASTON IMPLENTATIONS - UNTESTED ------------------------- #
+fn rand_rows[type: DType](t: Tensor[type], num_rows: Int) -> Tensor[type]:
+    let idx = Tensor[DType.uint64](10)
+    random.randint(idx.data(), num_rows, 0, t.dim(0))
+    return index[type](t, idx)
+
+
+fn index[type: DType](t: Tensor[type], rows: Tensor[DType.uint64]) -> Tensor[type]:
+    var out = Tensor[type](rows.num_elements(), t.dim(1))
+    for i in range(rows.num_elements()):
+        for j in range(out.dim(1)):
+            out[Index(i, j)] = t[Index(rows[i].to_int(), j)]
+
+    return out
+
+
+fn get_row[type: DType, n: Int](t: Tensor[type], row: Int) -> SIMD[type, n]:
+    return t.simd_load[n](row * t.dim(1))
+
+
+fn set_row[
+    type: DType, n: Int
+](inout t: Tensor[DType.float64], row: Int, insert: SIMD[DType.float64, n]):
+    t.simd_store(t.dim(1) * row, insert)
+
+
+# ------------------------- MOCA ------------------------- #
 
 
 fn elementwise_add[
@@ -294,3 +324,5 @@ fn qr_full_solve[type: DType](qr: QR[type], b: Tensor[type]) -> Tensor[type]:
 alias Vector2d = SIMD[DType.float64, 2]
 alias Vector3d = SIMD[DType.float64, 4]
 alias Vector4d = SIMD[DType.float64, 4]
+alias Vector5d = SIMD[DType.float64, 8]
+alias Vector6d = SIMD[DType.float64, 8]
