@@ -40,6 +40,18 @@ struct Set[type: AnyType, hash: fn (type) -> Int]:
         self.elements[idx] = self.elements[self.elements.__len__() - 1]
         let blank = self.elements.pop_back()
 
+    fn __str__(self: Self) -> String:
+        var s: String = "{"
+        for i in range(self.elements.__len__()):
+            s += String(hash(self.elements[i]))
+            if i != self.elements.__len__() - 1:
+                s += ", "
+        s += "}"
+        return s
+
+    fn __repr__(self: Self) -> String:
+        return self.__str__()
+
 
 # ------------------------- An integer set ------------------------- #
 fn id(x: Int) -> Int:

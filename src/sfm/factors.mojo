@@ -9,9 +9,9 @@ import src.moca as mc
 @value
 @register_passable("trivial")
 struct ProjectionFactor:
-    var id_pose: Int32  # aka image #
-    var id_cam: Int32
-    var lm_id: Int32
+    var id_pose: Int64  # aka image #
+    var id_cam: Int64
+    var id_lm: Int64
     var measured: SIMD[DType.float64, 2]
 
     fn residual(self, K: PinholeCamera, T: SE3, p: Landmark) -> SIMD[DType.float64, 2]:

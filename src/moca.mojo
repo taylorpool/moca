@@ -25,10 +25,28 @@ fn get_row[type: DType, n: Int](t: Tensor[type], row: Int) -> SIMD[type, n]:
     return t.simd_load[n](row * t.dim(1))
 
 
+fn get_row[type: DType](t: Tensor[type], row: Int) -> Tensor[type]:
+    var out = Tensor[type](t.dim(1))
+    for i in range(t.dim(1)):
+        out[i] = t[Index(row, i)]
+    return out
+
+
 fn set_row[
     type: DType, n: Int
 ](inout t: Tensor[DType.float64], row: Int, insert: SIMD[DType.float64, n]):
     t.simd_store(t.dim(1) * row, insert)
+
+
+fn argmax(t: Tensor) -> Int:
+    var m = t[0]
+    var idx = 0
+    for i in range(1, t.num_elements()):
+        if t[i] > m:
+            m = t[i]
+            idx = i
+
+    return idx
 
 
 # ------------------------- MOCA ------------------------- #

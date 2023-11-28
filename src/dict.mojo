@@ -56,6 +56,11 @@ struct Dict[type_key: AnyType, type_value: DType, hash: fn (type_key) -> Int, n:
     fn size(inout self) -> Int:
         return self.keys.__len__()
 
+    fn __copyinit__(inout self, existing: Self):
+        self.keys = existing.keys
+        self.values = existing.values
+        self.exists = existing.exists
+
 
 # ------------------------- Basic dictionary ------------------------- #
 fn identity_hash(x: Int) -> Int:
