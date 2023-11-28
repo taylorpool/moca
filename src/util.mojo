@@ -12,6 +12,28 @@ import testing
 #     return out
 
 
+# ------------------------- Numerical Derivatives ------------------------- #
+fn nder[
+    n_out: Int, n_in: Int
+](
+    f: fn (eps: SIMD[DType.float64, n_in]) capturing -> SIMD[DType.float64, n_out],
+    eps: Float64 = 1e-6,
+) -> Tensor[DType.float64]:
+    let x = SIMD[DType.float64, n_in](0)
+    let fx = f(x)
+
+    var d = Tensor[DType.float64](n_out, n_in)
+    for i in range(n_in):
+        var eps_vec = SIMD[DType.float64, n_in](0)
+        eps_vec[i] = eps
+        let diff = (f(eps_vec) - fx) / eps
+
+        for j in range(n_out):
+            d[Index(j, i)] = diff[j]
+
+    return d
+
+
 # ------------------------- Conversions ------------------------- #
 fn np2simd[
     n: Int, type: DType = DType.float64

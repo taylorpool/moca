@@ -24,23 +24,25 @@ fn triangulate(
     K2: PinholeCamera,
     T2: SE3,
     pts2: Tensor[DType.float64],
-) -> InlinedFixedVector[Landmark]:
+) -> DynamicVector[Landmark]:
     debug_assert(
         pts1.dim(0) == pts2.dim(0), "[TRIANGULATE] Got varying number of points"
     )
     debug_assert(pts1.dim(1) == 2, "[TRIANGULATE]  Too many columns")
     debug_assert(pts2.dim(1) == 2, "[TRIANGULATE]  Too many columns")
 
-    var out = Tensor[DType.float64](pts1.dim(0), 4)
+    var out = DynamicVector[Landmark](pts1.dim(0))
     for i in range(pts1.dim(0)):
         # TODO: Set via slices or via stacking
-        var p1 = mc.get_row[DType.float64, 4](pts1, i)
-        var p2 = mc.get_row[DType.float64, 4](pts2, i)
-        var tens1 = mc.matrix_matrix_multiply(SO3.skew(p1), (K1 * T1))
-        var tens2 = mc.matrix_matrix_multiply(SO3.skew(p2), (K2 * T2))
+        let p1 = mc.get_row[DType.float64, 4](pts1, i)
+        let p2 = mc.get_row[DType.float64, 4](pts2, i)
+        let tens1 = mc.matrix_matrix_multiply(SO3.skew(p1), (K1 * T1))
+        let tens2 = mc.matrix_matrix_multiply(SO3.skew(p2), (K2 * T2))
         # TODO: SVD here
-        var p3d = SIMD[DType.float64, 4](1)
-        mc.set_row[DType.float64, 4](out, i, p3d)
+        let p3d = SIMD[DType.float64, 4](1)
+        out.push_back(Landmark(p3d))
+
+    return out
 
 
 fn findEssentialMat(
@@ -49,16 +51,16 @@ fn findEssentialMat(
     K1: PinholeCamera,
     K2: PinholeCamera,
 ) -> Tensor[DType.float64]:
-    pass
+    return Tensor[DType.float64](4, 4)
 
 
 fn findFundamentalMat(
     kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]
 ) -> Tensor[DType.float64]:
-    pass
+    return Tensor[DType.float64](4, 4)
 
 
 fn recoverPose(
     E: Tensor[DType.float64], kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]
 ) -> SE3:
-    pass
+    return SE3.identity()
