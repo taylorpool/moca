@@ -3,7 +3,8 @@ from utils.index import Index
 from algorithm import vectorize_unroll
 import math
 import random
-from memory import memset_zero
+from memory import memset_zero, memset
+
 
 # ------------------------- EASTON IMPLENTATIONS - UNTESTED ------------------------- #
 fn rand_rows[type: DType](t: Tensor[type], num_rows: Int) -> Tensor[type]:
@@ -52,9 +53,58 @@ fn argmax(t: Tensor) -> Int:
 # ------------------------- MOCA ------------------------- #
 
 
-fn elementwise_add[
-    dtype: DType
-](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+fn arange[type: DType = DType.int64](n: Int) -> Tensor[type]:
+    var result = Tensor[type](n)
+    for i in range(n):
+        result[i] = i
+    return result
+
+
+fn eye[type: DType = DType.float64](n: Int) -> Tensor[type]:
+    var result = Tensor[type](n, n)
+
+    memset_zero(result.data(), n * n)
+    for i in range(n):
+        result[Index(i, i)] = 1
+
+    return result
+
+
+fn zeros[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
+    var result = Tensor[type](dims)
+    memset_zero(result.data(), result.num_elements())
+    return result
+
+
+fn zeros_like[type: DType](A: Tensor[type]) -> Tensor[type]:
+    var Z = Tensor[type](A.shape())
+    memset_zero(Z.data(), Z.num_elements())
+    return Z
+
+
+fn ones[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
+    var result = Tensor[type](dims)
+    let ptr = result.data()
+    for i in range(result.num_elements()):
+        ptr.simd_store[1](i, 1)
+    return result
+
+
+fn ones_like[type: DType](A: Tensor[type]) -> Tensor[type]:
+    var O = Tensor[type](A.shape())
+    let ptr = O.data()
+    for i in range(O.num_elements()):
+        ptr.simd_store[1](i, 1)
+    return O
+
+
+fn swap[type: DType](inout A: Tensor[type], i: StaticIntTuple, j: StaticIntTuple):
+    let tmp = A[i]
+    A[i] = A[j]
+    A[j] = tmp
+
+
+fn add[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -66,7 +116,7 @@ fn elementwise_add[
     return result
 
 
-fn elementwise_add[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor[type]:
+fn add[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor[type]:
     var result = rhs
     let ptr = result.data()
     for i in range(result.num_elements()):
@@ -74,9 +124,7 @@ fn elementwise_add[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor
     return result
 
 
-fn elementwise_subtract[
-    dtype: DType
-](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+fn subtract[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -88,9 +136,7 @@ fn elementwise_subtract[
     return result
 
 
-fn elementwise_multiply[
-    dtype: DType
-](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+fn multiply[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -102,16 +148,15 @@ fn elementwise_multiply[
     return result
 
 
-fn elementwise_multiply[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor[type]:
+fn multiply[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor[type]:
     var result = rhs
     let result_data = result.data()
     for i in range(result.num_elements()):
-        result.simd_store(i, lhs*result.simd_load[1](i))
+        result.simd_store(i, lhs * result.simd_load[1](i))
     return result
 
-fn elementwise_divide[
-    dtype: DType
-](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
+
+fn divide[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
     var result = Tensor[dtype](lhs.shape())
 
     @parameter
@@ -122,9 +167,8 @@ fn elementwise_divide[
 
     return result
 
-fn matrix_matrix_multiply[
-    type: DType
-](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+
+fn mat_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
     let n = rhs.shape()[1]
     let p = rhs.shape()[0]
@@ -138,36 +182,35 @@ fn matrix_matrix_multiply[
     return result
 
 
-fn matrix_transpose_matrix_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+fn matT_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[1]
     let n = rhs.shape()[1]
     let r = lhs.shape()[0]
-    var result = Tensor[type](m,n)
+    var result = Tensor[type](m, n)
     for i in range(m):
         for j in range(n):
-            let i_j = Index(i,j)
+            let i_j = Index(i, j)
             result[i_j] = 0
             for k in range(r):
-                result[i_j] += lhs[k,i]*rhs[k,j]
+                result[i_j] += lhs[k, i] * rhs[k, j]
     return result
 
 
-fn matrix_matrix_transpose_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+fn mat_matT_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
     let n = rhs.shape()[0]
     let r = lhs.shape()[1]
-    var result = Tensor[type](m,n)
+    var result = Tensor[type](m, n)
     for i in range(m):
         for j in range(n):
-            let i_j = Index(i,j)
+            let i_j = Index(i, j)
             for k in range(r):
-                result[i_j] += lhs[i,k]*rhs[j,k]
+                result[i_j] += lhs[i, k] * rhs[j, k]
 
     return result
 
-fn matrix_vector_multiply[
-    type: DType
-](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
+
+fn mat_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
     let m = mat.shape()[0]
     let n = vec.shape()[0]
     var result = Tensor[type](m)
@@ -178,9 +221,7 @@ fn matrix_vector_multiply[
     return result
 
 
-fn matrix_transpose_vector_multiply[
-    type: DType
-](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
+fn matT_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
     let m = mat.shape()[1]
     let n = mat.shape()[0]
     var result = Tensor[type](m)
@@ -190,7 +231,21 @@ fn matrix_transpose_vector_multiply[
 
     return result
 
-fn vector_transpose_vector_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
+
+fn matT_vec_multiply[
+    type: DType, n: Int
+](mat: Tensor[type], vec: SIMD[type, n]) -> Tensor[type]:
+    let m = mat.shape()[1]
+    var result = Tensor[type](m)
+    memset_zero(result.data(), m)
+    for j in range(n):
+        for i in range(m):
+            result[i] += mat[j, i] * vec[j]
+
+    return result
+
+
+fn vecT_vec_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
     let n = x.shape()[0]
     var result = SIMD[type, 1](0)
     for i in range(n):
@@ -199,30 +254,32 @@ fn vector_transpose_vector_multiply[type: DType](x: Tensor[type], y: Tensor[type
     return result
 
 
-fn vector_vector_transpose_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> Tensor[type]:
+fn vec_vecT_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> Tensor[type]:
     let n = x.shape()[0]
-    var result = Tensor[type](n,n)
+    var result = Tensor[type](n, n)
     for i in range(n):
         for j in range(n):
-            result[Index(i,j)] = x[i]*x[j]
+            result[Index(i, j)] = x[i] * x[j]
 
     return result
 
 
-fn vector_transpose_matrix_vector_multiply[type: DType](x: Tensor[type], A: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
+fn vecT_mat_vec_multiply[
+    type: DType
+](x: Tensor[type], A: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
     let m = x.shape()[0]
     let n = A.shape()[1]
 
-    var result = SIMD[type,1](0)
+    var result = SIMD[type, 1](0)
 
     for i in range(m):
-        var elem = SIMD[type,1](0)
+        var elem = SIMD[type, 1](0)
         for j in range(n):
-            elem += A[i,j]*y[j]
-        result += x[i]*elem
+            elem += A[i, j] * y[j]
+        result += x[i] * elem
 
     return result
-            
+
 
 fn forward_substitution_solve[
     type: DType
@@ -234,6 +291,23 @@ fn forward_substitution_solve[
     for i in range(n):
         let i_diff = i + diff
         x[i] = b[i_diff]
+        for j in range(i):
+            x[i] -= L[i_diff, j] * x[j]
+        x[i] /= L[i_diff, i]
+
+    return x
+
+
+fn forward_substitution_solve_permuted[
+    type: DType
+](L: Tensor[type], b: Tensor[type], row_order: Tensor[DType.int64]) -> Tensor[type]:
+    let m = L.shape()[0]
+    let n = L.shape()[1]
+    let diff = m - n
+    var x = Tensor[type](n)
+    for i in range(n):
+        let i_diff = i + diff
+        x[i] = b[row_order[i_diff].to_int()]
         for j in range(i):
             x[i] -= L[i_diff, j] * x[j]
         x[i] /= L[i_diff, i]
@@ -290,54 +364,100 @@ fn back_substitution_solve_transpose[
     return x
 
 
-fn llt_decompose[type: DType](A: Tensor[type]) -> Tensor[type]:
+@value
+struct LU[type: DType]:
+    var row_order: Tensor[DType.int64]
+    var L: Tensor[type]
+    var U: Tensor[type]
+
+    fn solve(self, b: Tensor[type]) -> Tensor[type]:
+        let y = forward_substitution_solve_permuted(self.L, b, self.row_order)
+        let x = back_substitution_solve(self.U, y)
+        return x
+
+
+fn lu_factor[type: DType](A: Tensor[type]) -> LU[type]:
     let n = A.shape()[0]
-    var L = Tensor[type](A.shape())
+    var lu = LU[type](arange(n), eye[type](n), A)
+
+    for k in range(n):
+        var i = k
+        var max_value = math.abs(lu.U[i, k])
+        for j in range(k, n):
+            let value = math.abs(lu.U[i, k])
+            if value > max_value:
+                i = j
+                max_value = value
+        for j in range(k, n):
+            swap(lu.U, Index(k, j), Index(i, j))
+        for j in range(k):
+            swap(lu.L, Index(k, j), Index(i, j))
+        swap(lu.row_order, Index(k), Index(i))
+        for j in range(k + 1, n):
+            lu.L[Index(j, k)] = lu.U[Index(j, k)] / lu.U[k, k]
+        for j in range(k + 1, n):
+            for s in range(k, n):
+                lu.U[Index(j, s)] -= lu.L[Index(j, k)] * lu.U[Index(s, k)]
+
+    return lu
+
+
+@value
+struct LLT[type: DType]:
+    var L: Tensor[type]
+
+    fn solve(self, b: Tensor[type]) -> Tensor[type]:
+        let y = forward_substitution_solve(self.L, b)
+        return back_substitution_solve_transpose(self.L, y)
+
+
+fn llt_factor[type: DType](A: Tensor[type]) -> LLT[type]:
+    let n = A.shape()[0]
+    var llt = LLT(zeros_like(A))
     for i in range(n):
         for j in range(i):
             let i_j = Index(i, j)
-            L[i_j] = A[i_j]
+            llt.L[i_j] = A[i_j]
             for k in range(j):
-                L[i_j] -= L[i, k] * L[j, k]
-            L[i_j] /= L[j, j]
+                llt.L[i_j] -= llt.L[i, k] * llt.L[j, k]
+            llt.L[i_j] /= llt.L[j, j]
 
         let i_i = Index(i, i)
-        L[i_i] = A[i_i]
+        llt.L[i_i] = A[i_i]
         for k in range(i):
-            L[i_i] -= L[i, k] * L[i, k]
-        L[i_i] = math.sqrt(L[i_i])
+            llt.L[i_i] -= llt.L[i, k] * llt.L[i, k]
+        llt.L[i_i] = math.sqrt(llt.L[i_i])
 
-    return L
+    return llt
 
 
-fn uut_decompose[type: DType](A: Tensor[type]) -> Tensor[type]:
+@value
+struct UUT[type: DType]:
+    var U: Tensor[type]
+
+    fn solve(self, b: Tensor[type]) -> Tensor[type]:
+        let y = back_substitution_solve(self.U, b)
+        return forward_substitution_solve_transpose(self.U, y)
+
+
+fn uut_factor[type: DType](A: Tensor[type]) -> UUT[type]:
     let n = A.shape()[0]
-    var U = Tensor[type](A.shape())
+    var uut = UUT(zeros_like(A))
     for i in range(n - 1, -1, -1):
         for j in range(n - 1, i, -1):
             let i_j = Index(i, j)
-            U[i_j] = A[i_j]
+            uut.U[i_j] = A[i_j]
             for k in range(n - 1, j, -1):
-                U[i_j] -= U[i, k] * U[j, k]
-            U[i_j] /= U[j, j]
+                uut.U[i_j] -= uut.U[i, k] * uut.U[j, k]
+            uut.U[i_j] /= uut.U[j, j]
 
         let i_i = Index(i, i)
-        U[i_i] = A[i_i]
+        uut.U[i_i] = A[i_i]
         for k in range(i + 1, n):
-            U[i_i] -= U[i, k] * U[i, k]
-        U[i_i] = math.sqrt(U[i, i])
+            uut.U[i_i] -= uut.U[i, k] * uut.U[i, k]
+        uut.U[i_i] = math.sqrt(uut.U[i, i])
 
-    return U
-
-
-fn llt_solve[type: DType](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let y = forward_substitution_solve(L, b)
-    return back_substitution_solve_transpose(L, y)
-
-
-fn uut_solve[type: DType](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let y = back_substitution_solve(U, b)
-    return forward_substitution_solve_transpose(U, y)
+    return uut
 
 
 @value
@@ -345,16 +465,12 @@ struct QR[type: DType]:
     var Q: Tensor[type]
     var R: Tensor[type]
 
-
-fn qr_reduced_decompose[type: DType](A: Tensor[type]) -> QR[type]:
-    let m = A.shape()[0]
-    let n = A.shape()[1]
-    var qr = QR[type](Tensor[type](m, n), Tensor[type](n, n))
-
-    return qr
+    fn solve(self, b: Tensor[type]) -> Tensor[type]:
+        let y = matT_vec_multiply(self.Q, b)
+        return back_substitution_solve(self.R, y)
 
 
-fn qr_full_decompose[type: DType](A: Tensor[type]) -> QR[type]:
+fn qr_factor[type: DType](A: Tensor[type]) -> QR[type]:
     let m = A.shape()[0]
     let n = A.shape()[1]
     var qr = QR[type](Tensor[type](m, m), A)
@@ -399,20 +515,9 @@ fn qr_full_decompose[type: DType](A: Tensor[type]) -> QR[type]:
     return qr
 
 
-fn qr_decompose[type: DType](A: Tensor[type], mode: StringRef = "reduced") -> QR[type]:
-    if mode == "reduced":
-        return qr_reduced_decompose(A)
-    elif mode == "full":
-        return qr_full_decompose(A)
-    else:
-        return qr_reduced_decompose(A)
-
-
-fn qr_full_solve[type: DType](qr: QR[type], b: Tensor[type]) -> Tensor[type]:
-    let y = matrix_transpose_vector_multiply(qr.Q, b)
-    return back_substitution_solve(qr.R, y)
-
-fn solve_homogeneous_equation[type: DType](A: Tensor[type], x0: Tensor[type]) -> Tensor[type]:
+fn solve_homogeneous_equation[
+    type: DType
+](A: Tensor[type], x0: Tensor[type]) -> Tensor[type]:
     let m = A.shape()[0]
     let n = A.shape()[1]
     let np1 = n + 1
@@ -420,38 +525,35 @@ fn solve_homogeneous_equation[type: DType](A: Tensor[type], x0: Tensor[type]) ->
     let max_count = 12
     var x = x0
     var lambd: SIMD[type, 1] = 0.0
-    let AtA = matrix_transpose_matrix_multiply(A, A)
+    let AtA = matT_mat_multiply(A, A)
 
     while count < max_count:
-        let lambd2 = 2*lambd
+        let lambd2 = 2 * lambd
         var grad_L = Tensor[type](np1)
-        let grad_1 = matrix_vector_multiply(AtA, x)
+        let grad_1 = mat_vec_multiply(AtA, x)
         for i in range(n):
-            grad_L[i] = grad_1[i] + lambd2*x[i]
-        grad_L[n] = vector_transpose_vector_multiply(x, x) - 1.0
+            grad_L[i] = grad_1[i] + lambd2 * x[i]
+        grad_L[n] = vecT_vec_multiply(x, x) - 1.0
 
         var D2L = Tensor[type](np1, np1)
         for i in range(n):
             for j in range(n):
-                let i_j = Index(i,j)
+                let i_j = Index(i, j)
                 D2L[i_j] = AtA[i_j]
                 if i == j:
                     D2L[i_j] += lambd2
 
             let i_n = Index(i, n)
-            D2L[i_n] = 2*x[i]
+            D2L[i_n] = 2 * x[i]
             let n_i = Index(n, i)
             D2L[n_i] = D2L[i_n]
-        D2L[Index(n,n)] = 1000
+        D2L[Index(n, n)] = 1000
 
         print(AtA)
         print(grad_L)
         print(D2L)
 
-        let L = llt_decompose(D2L)
-        print(L)
-
-        let step = llt_solve(L, grad_L)
+        let step = llt_factor(D2L).solve(grad_L)
         print(step)
 
         for i in range(x.shape()[0]):
@@ -466,101 +568,96 @@ fn solve_homogeneous_equation[type: DType](A: Tensor[type], x0: Tensor[type]) ->
 
     return x
 
-fn eye[type: DType](n: Int) -> Tensor[type]:
-    var result = Tensor[type](n,n)
-
-    memset_zero(result.data(), n*n)
-    for i in range(n):
-        result[Index(i,i)] = 1
-
-    return result
 
 fn diag[type: DType](v: Tensor[type]) -> Tensor[type]:
     if v.shape().num_elements() == 1:
         let n = v.shape()[0]
-        var result = Tensor[type](n,n)
-        memset_zero(result.data(), n*n)
+        var result = Tensor[type](n, n)
+        memset_zero(result.data(), n * n)
         for i in range(n):
-            result[Index(i,i)] = v[i]
+            result[Index(i, i)] = v[i]
         return result
     elif v.shape().num_elements() == 2:
         let n = v.shape()[0]
         var result = Tensor[type](n)
         for i in range(n):
-            result[i] = v[i,i]
+            result[i] = v[i, i]
             return result
+
 
 fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     var result = SIMD[type, 1](0)
     let ptr = x.data()
 
     for i in range(x.num_elements()):
-        result += ptr.load(i)**2
+        result += ptr.load(i) ** 2
 
     return result
+
 
 @value
 struct SVD[type: DType]:
     var U: Tensor[type]
     var s: Tensor[type]
     var V: Tensor[type]
-       
-fn compute_svd[type: DType](A: Tensor[type]) -> SVD[type]:
-    let m = A.shape()[0]
-    let n = A.shape()[1]
-    let result: SVD[type]
-    result.U = eye[type](m)
-    result.V = eye[type](n)
 
-    var B = A
 
-    for _ in range(100):
-        let qr = qr_full_decompose(A)
-        B = matrix_matrix_multiply(qr.R,qr.Q)
-        result.U = matrix_matrix_multiply(result.U, qr.Q)
-        result.V = matrix_matrix_transpose_multiply(result.V, qr.Q)
+# fn svd_factor[type: DType](A: Tensor[type]) -> SVD[type]:
+#     let m = A.shape()[0]
+#     let n = A.shape()[1]
+#     let result: SVD[type]
+#     result.U = eye[type](m)
+#     result.V = eye[type](n)
 
-        if squared_norm(elementwise_subtract(A, diag(diag(A)))) < 1e-9:
-            break
+#     var B = A
 
-    result.s = diag(A)
+#     for _ in range(100):
+#         let qr = qr_full_decompose(A)
+#         B = matrix_matrix_multiply(qr.R, qr.Q)
+#         result.U = matrix_matrix_multiply(result.U, qr.Q)
+#         result.V = matrix_matrix_transpose_multiply(result.V, qr.Q)
 
-    return result
+#         if squared_norm(subtract(A, diag(diag(A)))) < 1e-9:
+#             break
+
+#     result.s = diag(A)
+
+#     return result
 
 
 fn dlt[type: DType](x: Tensor[type], x_prime: Tensor[type]) -> Tensor[type]:
     let num_correspondences = x.shape()[0]
 
-    var A = Tensor[type](2*num_correspondences, 9)
+    var A = Tensor[type](2 * num_correspondences, 9)
     for i in range(num_correspondences):
+        let x_prime_x = multiply(x_prime[i, 0], x)
+        let y_prime_x = multiply(x_prime[i, 1], x)
+        let w_prime_x = multiply(x_prime[i, 2], x)
 
-        let x_prime_x = elementwise_multiply(x_prime[i,0], x)
-        let y_prime_x = elementwise_multiply(x_prime[i,1], x)
-        let w_prime_x = elementwise_multiply(x_prime[i,2], x)
+        let i2 = 2 * i
+        A[Index(i2, 0)] = 0
+        A[Index(i2, 1)] = 0
+        A[Index(i2, 2)] = 0
+        A[Index(i2, 3)] = -w_prime_x[0]
+        A[Index(i2, 4)] = -w_prime_x[1]
+        A[Index(i2, 5)] = -w_prime_x[2]
+        A[Index(i2, 6)] = y_prime_x[0]
+        A[Index(i2, 7)] = y_prime_x[1]
+        A[Index(i2, 8)] = y_prime_x[2]
 
-        let i2 = 2*i
-        A[Index(i2,0)] = 0
-        A[Index(i2,1)] = 0
-        A[Index(i2,2)] = 0
-        A[Index(i2,3)] = -w_prime_x[0]
-        A[Index(i2,4)] = -w_prime_x[1]
-        A[Index(i2,5)] = -w_prime_x[2]
-        A[Index(i2,6)] = y_prime_x[0]
-        A[Index(i2,7)] = y_prime_x[1]
-        A[Index(i2,8)] = y_prime_x[2]
+        let i2p1 = i2 + 1
+        A[Index(i2p1, 0)] = w_prime_x[0]
+        A[Index(i2p1, 1)] = w_prime_x[1]
+        A[Index(i2p1, 2)] = w_prime_x[2]
+        A[Index(i2p1, 3)] = 0
+        A[Index(i2p1, 4)] = 0
+        A[Index(i2p1, 5)] = 0
+        A[Index(i2p1, 6)] = -x_prime_x[0]
+        A[Index(i2p1, 7)] = -x_prime_x[1]
+        A[Index(i2p1, 8)] = -x_prime_x[2]
 
-        let i2p1 = i2+1
-        A[Index(i2p1,0)] = w_prime_x[0]
-        A[Index(i2p1,1)] = w_prime_x[1]
-        A[Index(i2p1,2)] = w_prime_x[2]
-        A[Index(i2p1,3)] = 0
-        A[Index(i2p1,4)] = 0
-        A[Index(i2p1,5)] = 0
-        A[Index(i2p1,6)] = -x_prime_x[0]
-        A[Index(i2p1,7)] = -x_prime_x[1]
-        A[Index(i2p1,8)] = -x_prime_x[2]
+    # let svd = compute_svd(A)
 
-    let svd = compute_svd(A)
 
 alias Vector2d = SIMD[DType.float64, 2]
 alias Vector3d = SIMD[DType.float64, 4]
