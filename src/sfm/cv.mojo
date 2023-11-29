@@ -1,6 +1,9 @@
 from src.variables import PinholeCamera, SE3, Landmark, SO3
 import src.moca as mc
 
+from utils.index import Index
+from memory import memset_zero
+
 
 # fn RANSAC[
 #     error: fn () -> Int32
@@ -44,6 +47,41 @@ fn triangulate(
 
     return out
 
+fn findFundamentalMat(
+    kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]
+) -> Tensor[DType.float64]:
+    let num_correspondences = kp1.shape()[0]
+    var A = Tensor[DType.float64](num_correspondences, 9)
+    for i in range(num_correspondences):
+        A[Index(i, 0)] = kp2[i,0]*kp1[i,0]
+        A[Index(i, 1)] = kp2[i,0]*kp1[i,1]
+        A[Index(i, 2)] = kp2[i,0]
+        A[Index(i, 3)] = kp2[i,1]*kp1[i,0]
+        A[Index(i, 4)] = kp2[i,1]*kp1[i,1]
+        A[Index(i, 5)] = kp2[i,1]
+        A[Index(i, 6)] = kp1[i,0]
+        A[Index(i, 7)] = kp1[i,1]
+        A[Index(i, 8)] = 1.0
+
+    var f0 = Tensor[DType.float64](A.shape()[1])
+    memset_zero(f0.data(), f0.num_elements())
+    f0[0] = 1.0
+    let f = moca.solve_homogeneous_equation(A, f0)
+
+    var F = Tensor[DType.float64](3,3)
+    F[Index(0,0)] = f[0] 
+    F[Index(0,1)] = f[1] 
+    F[Index(0,2)] = f[2] 
+    F[Index(1,0)] = f[3] 
+    F[Index(1,1)] = f[4] 
+    F[Index(1,2)] = f[5] 
+    F[Index(2,0)] = f[6] 
+    F[Index(2,1)] = f[7] 
+    F[Index(2,2)] = f[8] 
+
+    return F
+
+
 
 fn findEssentialMat(
     kp1: Tensor[DType.float64],
@@ -51,13 +89,12 @@ fn findEssentialMat(
     K1: PinholeCamera,
     K2: PinholeCamera,
 ) -> Tensor[DType.float64]:
-    return Tensor[DType.float64](4, 4)
+    let num_correspondences = kp1.shape()[0]
+    var A = Tensor[DType.float64](num_correspondences, 9)
+    let F = findFundamentalMat(kp1, kp2)
+    let E = moca.matrix_matrix_multiply(moca.matrix_transpose_matrix_multiply(K2.as_mat(), F), K1.as_mat())
+    return E
 
-
-fn findFundamentalMat(
-    kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]
-) -> Tensor[DType.float64]:
-    return Tensor[DType.float64](4, 4)
 
 
 fn recoverPose(

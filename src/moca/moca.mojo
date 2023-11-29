@@ -168,7 +168,7 @@ fn divide[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]
     return result
 
 
-fn mat_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+fn mat_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
     let n = rhs.shape()[1]
     let p = rhs.shape()[0]
@@ -182,7 +182,7 @@ fn mat_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor
     return result
 
 
-fn matT_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+fn matT_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[1]
     let n = rhs.shape()[1]
     let r = lhs.shape()[0]
@@ -196,7 +196,7 @@ fn matT_mat_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tenso
     return result
 
 
-fn mat_matT_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+fn mat_matT[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
     let n = rhs.shape()[0]
     let r = lhs.shape()[1]
@@ -210,7 +210,7 @@ fn mat_matT_multiply[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tenso
     return result
 
 
-fn mat_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
+fn mat_vec[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
     let m = mat.shape()[0]
     let n = vec.shape()[0]
     var result = Tensor[type](m)
@@ -221,7 +221,7 @@ fn mat_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor
     return result
 
 
-fn matT_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
+fn matT_vec[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
     let m = mat.shape()[1]
     let n = mat.shape()[0]
     var result = Tensor[type](m)
@@ -232,9 +232,7 @@ fn matT_vec_multiply[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tenso
     return result
 
 
-fn matT_vec_multiply[
-    type: DType, n: Int
-](mat: Tensor[type], vec: SIMD[type, n]) -> Tensor[type]:
+fn matT_vec[type: DType, n: Int](mat: Tensor[type], vec: SIMD[type, n]) -> Tensor[type]:
     let m = mat.shape()[1]
     var result = Tensor[type](m)
     memset_zero(result.data(), m)
@@ -245,7 +243,7 @@ fn matT_vec_multiply[
     return result
 
 
-fn vecT_vec_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
+fn vecT_vec[type: DType](x: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
     let n = x.shape()[0]
     var result = SIMD[type, 1](0)
     for i in range(n):
@@ -254,7 +252,7 @@ fn vecT_vec_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> SIMD[type
     return result
 
 
-fn vec_vecT_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> Tensor[type]:
+fn vec_vecT[type: DType](x: Tensor[type], y: Tensor[type]) -> Tensor[type]:
     let n = x.shape()[0]
     var result = Tensor[type](n, n)
     for i in range(n):
@@ -264,7 +262,7 @@ fn vec_vecT_multiply[type: DType](x: Tensor[type], y: Tensor[type]) -> Tensor[ty
     return result
 
 
-fn vecT_mat_vec_multiply[
+fn vecT_mat_vec[
     type: DType
 ](x: Tensor[type], A: Tensor[type], y: Tensor[type]) -> SIMD[type, 1]:
     let m = x.shape()[0]
@@ -279,6 +277,30 @@ fn vecT_mat_vec_multiply[
         result += x[i] * elem
 
     return result
+
+
+fn sub_solve_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = A.shape()[0]
+    var x = Tensor[type](n)
+    for i in range(n):
+        x[i] = b[i]
+        for j in range(i):
+            x[i] -= A[i, j] * x[j]
+        x[i] /= A[i, i]
+
+    return x
+
+
+fn sub_solve_top_right[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = A.shape()[0]
+    var x = Tensor[type](n)
+    for i in range(n):
+        let index = n - i - 1
+        x[index] = b[i]
+        for j in range(index + 1, n):
+            x[index] -= A[i, j] * x[j]
+
+        x[index] /= A[i, index]
 
 
 fn forward_substitution_solve[
@@ -466,7 +488,7 @@ struct QR[type: DType]:
     var R: Tensor[type]
 
     fn solve(self, b: Tensor[type]) -> Tensor[type]:
-        let y = matT_vec_multiply(self.Q, b)
+        let y = matT_vec(self.Q, b)
         return back_substitution_solve(self.R, y)
 
 
@@ -525,15 +547,15 @@ fn solve_homogeneous_equation[
     let max_count = 12
     var x = x0
     var lambd: SIMD[type, 1] = 0.0
-    let AtA = matT_mat_multiply(A, A)
+    let AtA = matT_mat(A, A)
 
     while count < max_count:
         let lambd2 = 2 * lambd
         var grad_L = Tensor[type](np1)
-        let grad_1 = mat_vec_multiply(AtA, x)
+        let grad_1 = mat_vec(AtA, x)
         for i in range(n):
             grad_L[i] = grad_1[i] + lambd2 * x[i]
-        grad_L[n] = vecT_vec_multiply(x, x) - 1.0
+        grad_L[n] = vecT_vec(x, x) - 1.0
 
         var D2L = Tensor[type](np1, np1)
         for i in range(n):
@@ -613,9 +635,9 @@ struct SVD[type: DType]:
 
 #     for _ in range(100):
 #         let qr = qr_full_decompose(A)
-#         B = matrix_matrix_multiply(qr.R, qr.Q)
-#         result.U = matrix_matrix_multiply(result.U, qr.Q)
-#         result.V = matrix_matrix_transpose_multiply(result.V, qr.Q)
+#         B = matrix_matrix(qr.R, qr.Q)
+#         result.U = matrix_matrix(result.U, qr.Q)
+#         result.V = matrix_matrix_transpose(result.V, qr.Q)
 
 #         if squared_norm(subtract(A, diag(diag(A)))) < 1e-9:
 #             break

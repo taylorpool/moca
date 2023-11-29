@@ -210,4 +210,39 @@ struct SfM:
 
     fn optimize(inout self):
         # TODO: Make sure not optimizing over first pose - it essentially needs a prior on it
-        pass
+        let num_cameras = self.active_cameras.size()
+        let num_landmarks = self.active_landmarks.size()
+        let intrinsic_dim = 9
+        let extrinsic_dim = 7
+        let landmark_dim = 3
+
+        var x = Tensor[DType.float64](num_cameras*(intrinsic_dim + extrinsic_dim) + num_landmarks*landmark_dim)
+
+        let max_iters = 100
+        for iter in range(max_iters):
+            # Factors to optimize with
+            var A = Tensor[DType.float64]()
+            var b = Tensor[DType.float64]()
+            for i in range(self.active_factors.elements.size):
+                let factor = self.factors[i]
+                let camera_intrinsic = self.cameras[factor.id_cam.to_int()]
+                let camera_extrinsic = self.poses[factor.id_pose.to_int()]
+                let landmark = self.landmarks[factor.id_lm.to_int()]
+                var H_camera_intrinsic: Tensor[DType.float64]
+                var H_camera_extrinsic: Tensor[DType.float64]
+                var H_landmark: Tensor[DType.float64]
+                let residual = self.factors[i].residual(camera_intrinsic, camera_extrinsic, landmark)
+                self.factors[i].jacobian(camera_intrinsic, camera_extrinsic, landmark, H_camera_intrinsic, H_camera_extrinsic, H_landmark)
+
+                var Dr_i = Tensor[DType.float64](H_camera_intrinsic.shape()[0], H_camera_intrinsic.shape()[1]+H_camera_extrinsic.shape()[1]+H_landmark.shape()[1])
+                b = moca.subtract(b, moca.matrix_transpose_vector_multiply[DType.float64, 2](Dr_i, residual))
+                A = moca.add(A, moca.matrix_transpose_matrix_multiply(Dr_i, Dr_i))
+
+            var lambd: Float64 = 1e-6
+            for lambd_index in range(10):
+                let qr = moca.qr_factor(A)
+                let step = qr.solve(b)
+
+                x = moca.add(x, step)
+                break
+                lambd *= 10.0
