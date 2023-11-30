@@ -1,6 +1,7 @@
 import src.moca as mc
-
+from python import Python
 from testing import assert_almost_equal, assert_equal
+from src.util import np2tensor2d_f64, assert_almost_equal_tensor
 from utils.index import Index
 import random
 
@@ -617,6 +618,19 @@ fn test_uut_solve() raises:
         _ = assert_almost_equal(x[i], x_true[i])
 
 
+def test_inv3() -> NoneType:
+    print("# test_inv3")
+    np = Python.import_module("numpy")
+    xnp = np.random.rand(3, 3)
+    x = np2tensor2d_f64(xnp)
+
+    xnpinv = np.linalg.inv(xnp)
+    xinv_des = np2tensor2d_f64(xnpinv)
+    xinv = mc.inv3(x)
+
+    assert_almost_equal_tensor[DType.float64, 16](xinv, xinv_des)
+
+
 fn test_power_method():
     print("# test_power_method")
     var A = Tensor[DType.float64](2, 2)
@@ -807,6 +821,7 @@ fn main() raises:
     _ = test_vecT_vec()
     _ = test_vec_vecT()
     _ = test_vecT_mat_vec()
+    test_inv3()
     _ = test_forward_substitution_solve_permuted()
     _ = test_solve_from_top_left()
     _ = test_solve_from_top_right()

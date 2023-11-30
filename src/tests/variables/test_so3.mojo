@@ -9,7 +9,23 @@ from src.util import (
     assert_almost_equal_tensor,
 )
 
+
 # TODO: Use more interesting quaternion, edges cases might be being missed
+def test_from_mat() -> NoneType:
+    print("# so3 from_mat")
+    R = Python.import_module("scipy.spatial.transform").Rotation
+    np = Python.import_module("numpy")
+
+    Rpy = R.from_rotvec([0.1, 0.3, 0.4])
+    qpy = Rpy.as_quat()
+    matpy = Rpy.as_matrix()
+
+    q = np2simd[4](qpy)
+    mat = np2tensor2d[DType.float64](matpy)
+
+    qmine = SO3(mat).quat
+
+    assert_almost_equal(q, qmine)
 
 
 def test_expmap() -> NoneType:
@@ -122,6 +138,7 @@ def test_rotate() -> NoneType:
 
 
 fn main() raises:
+    test_from_mat()
     test_expmap()
     test_mult()
     test_identity()

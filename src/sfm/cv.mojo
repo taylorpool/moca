@@ -69,8 +69,9 @@ fn PnP(
     K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
 ) -> SE3:
     var P = PnP(pts2d, pts3d)
-    # TODO: Pull out R and t
-    return SE3.identity()
+    var Rt = mc.mat_mat(mc.inv3(K.as_mat(True)), P)
+    # TODO: Orthogonalize R to make sure it's a rotation matrix
+    return SE3(SO3(Rt), mc.Vector3d(Rt[0, 3], Rt[1, 3], Rt[2, 3], 0))
 
 
 fn triangulate(

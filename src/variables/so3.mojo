@@ -29,6 +29,47 @@ struct SO3:
             quat /= norm
         return Self {quat: quat}
 
+    fn __init__(mat: Tensor[DType.float64]) -> Self:
+        let trace = mat[Index(0, 0)] + mat[Index(1, 1)] + mat[Index(2, 2)]
+        var quat = mc.Vector4d(0, 0, 0, 1)
+
+        if trace > 0:
+            let s = 0.5 / sqrt(trace + 1)
+            quat[0] = (mat[Index(2, 1)] - mat[Index(1, 2)]) * s
+            quat[1] = (mat[Index(0, 2)] - mat[Index(2, 0)]) * s
+            quat[2] = (mat[Index(1, 0)] - mat[Index(0, 1)]) * s
+            quat[3] = 0.25 / s
+        else:
+            if (
+                mat[Index(0, 0)] > mat[Index(1, 1)]
+                and mat[Index(0, 0)] > mat[Index(2, 2)]
+            ):
+                let s = 2 * sqrt(
+                    1 + mat[Index(0, 0)] - mat[Index(1, 1)] - mat[Index(2, 2)]
+                )
+                quat[0] = 0.25 * s
+                quat[1] = (mat[Index(0, 1)] + mat[Index(1, 0)]) / s
+                quat[2] = (mat[Index(0, 2)] + mat[Index(2, 0)]) / s
+                quat[3] = (mat[Index(2, 1)] - mat[Index(1, 2)]) / s
+            elif mat[Index(1, 1)] > mat[Index(2, 2)]:
+                let s = 2 * sqrt(
+                    1 + mat[Index(1, 1)] - mat[Index(0, 0)] - mat[Index(2, 2)]
+                )
+                quat[0] = (mat[Index(0, 1)] + mat[Index(1, 0)]) / s
+                quat[1] = 0.25 * s
+                quat[2] = (mat[Index(1, 2)] + mat[Index(2, 1)]) / s
+                quat[3] = (mat[Index(0, 2)] - mat[Index(2, 0)]) / s
+            else:
+                let s = 2 * sqrt(
+                    1 + mat[Index(2, 2)] - mat[Index(0, 0)] - mat[Index(1, 1)]
+                )
+                quat[0] = (mat[Index(0, 2)] + mat[Index(2, 0)]) / s
+                quat[1] = (mat[Index(1, 2)] + mat[Index(2, 1)]) / s
+                quat[2] = 0.25 * s
+                quat[3] = (mat[Index(1, 0)] - mat[Index(0, 1)]) / s
+
+        return Self(quat)
+
     @always_inline
     @staticmethod
     fn identity() -> Self:

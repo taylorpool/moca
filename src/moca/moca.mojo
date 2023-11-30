@@ -322,6 +322,30 @@ fn vecT_mat_vec[
     return result
 
 
+fn inv3[type:DType](matrix: Tensor[type]) -> Tensor[type]:
+    var result = Tensor[type](3, 3)
+    let det = matrix[0, 0] * (matrix[1, 1] * matrix[2, 2] - matrix[1, 2] * matrix[2, 1]) -
+              matrix[0, 1] * (matrix[1, 0] * matrix[2, 2] - matrix[1, 2] * matrix[2, 0]) +
+              matrix[0, 2] * (matrix[1, 0] * matrix[2, 1] - matrix[1, 1] * matrix[2, 0])
+
+    if det == 0:
+        # Matrix is not invertible
+        return result
+
+    let inv_det = 1.0 / det
+
+    result[Index(0, 0)] = (matrix[1, 1] * matrix[2, 2] - matrix[1, 2] * matrix[2, 1]) * inv_det
+    result[Index(0, 1)] = (matrix[0, 2] * matrix[2, 1] - matrix[0, 1] * matrix[2, 2]) * inv_det
+    result[Index(0, 2)] = (matrix[0, 1] * matrix[1, 2] - matrix[0, 2] * matrix[1, 1]) * inv_det
+    result[Index(1, 0)] = (matrix[1, 2] * matrix[2, 0] - matrix[1, 0] * matrix[2, 2]) * inv_det
+    result[Index(1, 1)] = (matrix[0, 0] * matrix[2, 2] - matrix[0, 2] * matrix[2, 0]) * inv_det
+    result[Index(1, 2)] = (matrix[0, 2] * matrix[1, 0] - matrix[0, 0] * matrix[1, 2]) * inv_det
+    result[Index(2, 0)] = (matrix[1, 0] * matrix[2, 1] - matrix[1, 1] * matrix[2, 0]) * inv_det
+    result[Index(2, 1)] = (matrix[0, 1] * matrix[2, 0] - matrix[0, 0] * matrix[2, 1]) * inv_det
+    result[Index(2, 2)] = (matrix[0, 0] * matrix[1, 1] - matrix[0, 1] * matrix[1, 0]) * inv_det
+
+    return result
+
 fn solve_from_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
     let n = A.shape()[0]
     var x = Tensor[type](n)

@@ -23,6 +23,11 @@ struct SE3:
     fn __init__(rot: SO3, trans: mc.Vector4d) -> Self:
         return Self {rot: rot, trans: trans}
 
+    fn __init__(mat: Tensor[DType.float64]) -> Self:
+        let R = SO3(mat)
+        let t = mc.Vector3d(mat[Index(0, 3)], mat[Index(1, 3)], mat[Index(2, 3)], 0)
+        return Self(R, t)
+
     @always_inline
     @staticmethod
     fn identity() -> Self:
