@@ -52,6 +52,7 @@ fn argmax(t: Tensor) -> Int:
 
 # ------------------------- MOCA ------------------------- #
 
+
 fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     var result = SIMD[type, 1](0)
     let ptr = x.data()
@@ -65,8 +66,16 @@ fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
 fn norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     return math.sqrt(squared_norm(x))
 
+
 fn arange[type: DType = DType.int64](n: Int) -> Tensor[type]:
     var result = Tensor[type](n)
+    for i in range(n):
+        result[i] = i
+    return result
+
+
+fn arange[type: DType, n: Int]() -> SIMD[type, n]:
+    var result = SIMD[type, n]()
     for i in range(n):
         result[i] = i
     return result
@@ -184,8 +193,9 @@ fn divide[type: DType](lhs: Tensor[type], rhs: SIMD[type, 1]) -> Tensor[type]:
     var result = lhs
     for i in range(lhs.shape()[0]):
         result[i] /= rhs
-        
+
     return result
+
 
 fn mat_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
@@ -226,6 +236,20 @@ fn mat_matT[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
             for k in range(r):
                 result[i_j] += lhs[i, k] * rhs[j, k]
 
+    return result
+
+
+fn matT_matT[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
+    let m = lhs.shape()[1]
+    let n = rhs.shape()[0]
+    let r = lhs.shape()[0]
+    var result = Tensor[type](m, n)
+    for i in range(m):
+        for j in range(n):
+            let i_j = Index(i, j)
+            result[i_j] = 0
+            for k in range(r):
+                result[i_j] += lhs[k, i] * rhs[j, k]
     return result
 
 
@@ -309,6 +333,7 @@ fn solve_from_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[
 
     return x
 
+
 fn solveT_from_top_left[type: DType](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
     let n = At.shape()[0]
     var x = Tensor[type](n)
@@ -363,6 +388,7 @@ fn solve_from_bottom_right[
 
     return x
 
+
 fn solveT_from_bottom_right[
     type: DType
 ](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
@@ -393,6 +419,7 @@ fn forward_substitution_solve_permuted[
         x[i] /= L[i_diff, i]
 
     return x
+
 
 @value
 struct LU[type: DType]:
@@ -489,12 +516,22 @@ fn uut_factor[type: DType](A: Tensor[type]) -> UUT[type]:
 
     return uut
 
+
 @value
 struct EigenPair[type: DType]:
     var val: SIMD[type, 1]
     var vec: Tensor[type]
 
-fn power_method[type: DType](A: Tensor[type], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+
+fn power_method[
+    type: DType
+](
+    A: Tensor[type],
+    eigen0: EigenPair[type],
+    max_iters: Int = 100,
+    absTol: SIMD[type, 1] = 1e-12,
+    relTol: SIMD[type, 1] = 1e-12,
+) -> EigenPair[type]:
     var eigen = eigen0
     for i in range(max_iters):
         let y = mat_vec(A, eigen.vec)
@@ -502,14 +539,28 @@ fn power_method[type: DType](A: Tensor[type], eigen0: EigenPair[type], max_iters
         eigen.vec = divide(y, norm(y))
         eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
 
-        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
-        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        let absoluteError = squared_norm(
+            subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec))
+        )
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (
+            eigen.val - old_eigen.val
+        ) ** 2
         if absoluteError < absTol or relativeDiff < relTol:
             break
 
     return eigen
 
-fn shifted_lu_power_method[type: DType](A: Tensor[type], target_eigval: SIMD[type,1], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+
+fn shifted_lu_power_method[
+    type: DType
+](
+    A: Tensor[type],
+    target_eigval: SIMD[type, 1],
+    eigen0: EigenPair[type],
+    max_iters: Int = 100,
+    absTol: SIMD[type, 1] = 1e-12,
+    relTol: SIMD[type, 1] = 1e-12,
+) -> EigenPair[type]:
     let lu = lu_factor(subtract(A, multiply(target_eigval, eye[A.dtype](A.shape()[0]))))
     var eigen = eigen0
     for i in range(max_iters):
@@ -518,8 +569,12 @@ fn shifted_lu_power_method[type: DType](A: Tensor[type], target_eigval: SIMD[typ
         eigen.vec = divide(y, norm(y))
         eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
 
-        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
-        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        let absoluteError = squared_norm(
+            subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec))
+        )
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (
+            eigen.val - old_eigen.val
+        ) ** 2
         if absoluteError < absTol or relativeDiff < relTol:
             break
 
@@ -587,6 +642,10 @@ fn qr_iteration[type: DType](A0: Tensor[type], max_iters: Int = 100):
     for i in range(max_iters):
         let qr = qr_factor(A)
         A = mat_vec(qr.R, qr.Q)
+
+
+fn solve_homogeneous_equation[type: DType](A: Tensor[type]) -> Tensor[type]:
+    return A
 
 
 fn solve_homogeneous_equation[
