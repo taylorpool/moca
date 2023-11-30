@@ -216,7 +216,9 @@ struct SfM:
         let extrinsic_dim = 7
         let landmark_dim = 3
 
-        var x = Tensor[DType.float64](num_cameras*(intrinsic_dim + extrinsic_dim) + num_landmarks*landmark_dim)
+        var x = Tensor[DType.float64](
+            num_cameras * (intrinsic_dim + extrinsic_dim) + num_landmarks * landmark_dim
+        )
 
         let max_iters = 100
         for iter in range(max_iters):
@@ -231,12 +233,26 @@ struct SfM:
                 var H_camera_intrinsic: Tensor[DType.float64]
                 var H_camera_extrinsic: Tensor[DType.float64]
                 var H_landmark: Tensor[DType.float64]
-                let residual = self.factors[i].residual(camera_intrinsic, camera_extrinsic, landmark)
-                self.factors[i].jacobian(camera_intrinsic, camera_extrinsic, landmark, H_camera_intrinsic, H_camera_extrinsic, H_landmark)
+                let residual = self.factors[i].residual(
+                    camera_intrinsic, camera_extrinsic, landmark
+                )
+                self.factors[i].jacobian(
+                    camera_intrinsic,
+                    camera_extrinsic,
+                    landmark,
+                    H_camera_intrinsic,
+                    H_camera_extrinsic,
+                    H_landmark,
+                )
 
-                var Dr_i = Tensor[DType.float64](H_camera_intrinsic.shape()[0], H_camera_intrinsic.shape()[1]+H_camera_extrinsic.shape()[1]+H_landmark.shape()[1])
-                b = moca.subtract(b, moca.matrix_transpose_vector_multiply[DType.float64, 2](Dr_i, residual))
-                A = moca.add(A, moca.matrix_transpose_matrix_multiply(Dr_i, Dr_i))
+                var Dr_i = Tensor[DType.float64](
+                    H_camera_intrinsic.shape()[0],
+                    H_camera_intrinsic.shape()[1]
+                    + H_camera_extrinsic.shape()[1]
+                    + H_landmark.shape()[1],
+                )
+                b = mc.subtract(b, mc.matT_vec[DType.float64, 2](Dr_i, residual))
+                A = mc.add(A, mc.matT_mat(Dr_i, Dr_i))
 
             var lambd: Float64 = 1e-6
             for lambd_index in range(10):

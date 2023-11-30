@@ -45,7 +45,7 @@ struct PinholeCamera:
     @always_inline
     fn __mul__(self, other: SE3) -> Tensor[DType.float64]:
         # TODO: Probably a faster way to do this
-        return mc.matrix_matrix_multiply(self.as_mat(), other.as_mat())
+        return mc.mat_mat(self.as_mat(), other.as_mat())
 
     @always_inline
     fn fx(self) -> Float64:
