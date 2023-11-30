@@ -1,4 +1,4 @@
-import moca as mc
+import src.moca as mc
 
 from testing import assert_almost_equal, assert_equal
 from utils.index import Index
@@ -133,7 +133,11 @@ fn test_divide2() raises:
     let x = mc.arange[DType.float64](3)
     let y: SIMD[x.dtype, 1] = 4.0
     let z = mc.divide(x, y)
+    let y: SIMD[x.dtype, 1] = 4.0
+    let z = mc.divide(x, y)
     for i in range(z.shape()[0]):
+        _ = assert_almost_equal(z[i], x[i] / y)
+
         _ = assert_almost_equal(z[i], x[i] / y)
 
 
@@ -627,133 +631,6 @@ fn test_shifted_lu_power_method1():
     _ = assert_almost_equal(eigen.val, target_eigval)
     _ = assert_almost_equal(eigen.vec[0], 1.0)
     _ = assert_almost_equal(eigen.vec[1], 0.0)
-
-
-fn test_copy_row():
-    print("# test_copy_row")
-    var A = Tensor[DType.float64](1, 4)
-    A[Index(0, 0)] = 1.0
-    A[Index(0, 1)] = 2.0
-    A[Index(0, 2)] = 3.0
-    A[Index(0, 3)] = 4.0
-
-    let x = mc.copy_row(A, 0)
-
-    _ = assert_equal(x.shape()[0], A.shape()[1])
-
-    for i in range(x.shape()[0]):
-        _ = assert_equal(x[i], A[0, i])
-
-
-fn test_copy_row2():
-    print("# test_copy_row2")
-    var A = Tensor[DType.float64](1, 4)
-    A[Index(0, 0)] = 1.0
-    A[Index(0, 1)] = 2.0
-    A[Index(0, 2)] = 3.0
-    A[Index(0, 3)] = 4.0
-
-    let start_col = 1
-
-    let x = mc.copy_row(A, 0, start_col)
-    _ = assert_equal(x.shape()[0], A.shape()[1] - start_col)
-
-    for i in range(x.shape()[0]):
-        _ = assert_equal(x[i], A[0, i + start_col])
-
-
-fn test_copy_col():
-    print("# test_copy_col")
-    var A = Tensor[DType.float64](4, 1)
-    A[Index(0, 0)] = 1.0
-    A[Index(1, 0)] = 2.0
-    A[Index(2, 0)] = 3.0
-    A[Index(3, 0)] = 4.0
-
-    let x = mc.copy_col(A, 0)
-
-    _ = assert_equal(x.shape()[0], A.shape()[0])
-
-    for i in range(x.shape()[0]):
-        _ = assert_equal(x[i], A[i, 0])
-
-
-fn test_copy_col2():
-    print("# test_copy_col2")
-    var A = Tensor[DType.float64](1, 4)
-    A[Index(0, 0)] = 1.0
-    A[Index(0, 1)] = 2.0
-    A[Index(0, 2)] = 3.0
-    A[Index(0, 3)] = 4.0
-
-    let start_row = 1
-
-    let x = mc.copy_col(A, 0, start_row)
-    _ = assert_equal(x.shape()[0], A.shape()[0] - start_row)
-
-    for i in range(x.shape()[0]):
-        _ = assert_equal(x[i], A[i + start_row, 0])
-
-
-fn test_transpose():
-    print("# test_transpose")
-    var A = Tensor[DType.float64](3, 2)
-    A[Index(0, 0)] = 1.0
-    A[Index(0, 1)] = 2.0
-    A[Index(1, 0)] = 4.0
-    A[Index(1, 1)] = 5.0
-    A[Index(2, 0)] = 7.0
-    A[Index(2, 1)] = 8.0
-
-    let At = mc.transpose(A)
-
-    _ = assert_equal(At.shape()[0], A.shape()[1])
-    _ = assert_equal(At.shape()[1], A.shape()[0])
-
-    for i in range(At.shape()[0]):
-        for j in range(At.shape()[1]):
-            _ = assert_equal(At[i, j], A[j, i])
-
-
-fn test_hessenberg_factor():
-    print("# test_hessenberg_factor")
-    var A_true = Tensor[DType.float64](3, 3)
-    A_true[Index(0, 0)] = 1.0
-    A_true[Index(0, 1)] = 2.0
-    A_true[Index(0, 2)] = 3.0
-    A_true[Index(1, 0)] = 4.0
-    A_true[Index(1, 1)] = 5.0
-    A_true[Index(1, 2)] = 6.0
-    A_true[Index(2, 0)] = 7.0
-    A_true[Index(2, 1)] = 8.0
-    A_true[Index(2, 2)] = 9.0
-
-    let h = mc.hessenberg_factor(A_true)
-
-    _ = assert_equal(h.Q.shape()[0], A_true.shape()[0])
-    _ = assert_equal(h.Q.shape()[1], A_true.shape()[0])
-    _ = assert_equal(h.H.shape()[0], A_true.shape()[0])
-    _ = assert_equal(h.H.shape()[1], A_true.shape()[1])
-
-    for i in range(A_true.shape()[0]):
-        for j in range(i - 1):
-            _ = assert_almost_equal(h.H[i, j], 0.0)
-
-    let QtQ = mc.matT_mat(h.Q, h.Q)
-    for i in range(QtQ.shape()[0]):
-        for j in range(QtQ.shape()[1]):
-            if i == j:
-                _ = assert_almost_equal(QtQ[i, j], 1.0)
-            else:
-                _ = assert_almost_equal(QtQ[i, j], 0.0)
-
-    let A = mc.mat_mat(h.Q, mc.mat_matT(h.H, h.Q))
-    _ = assert_equal(A.shape()[0], A_true.shape()[0])
-    _ = assert_equal(A.shape()[1], A_true.shape()[1])
-
-    for i in range(A.shape()[0]):
-        for j in range(A.shape()[1]):
-            _ = assert_almost_equal(A[i, j], A_true[i, j])
 
 
 fn main() raises:

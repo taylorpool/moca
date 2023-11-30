@@ -55,11 +55,11 @@ struct ProjectionFactor:
         f_T_temp[Index(0, 3)] = 1.0
         f_T_temp[Index(1, 4)] = 1.0
         f_T_temp[Index(2, 5)] = 1.0
-        let KT = mc.matrix_matrix_multiply(K.as_mat(), T.as_mat())
-        let f_T = mc.matrix_matrix_multiply(KT, f_T_temp)
+        let KT = mc.mat_mat(K.as_mat(), T.as_mat())
+        let f_T = mc.mat_mat(KT, f_T_temp)
 
-        let f_p = mc.matrix_matrix_multiply(K.as_mat(True), T.rot.as_mat())
+        let f_p = mc.mat_mat(K.as_mat(True), T.rot.as_mat())
 
-        H_K = mc.matrix_matrix_multiply(h_f, f_K)
-        H_T = mc.matrix_matrix_multiply(h_f, f_T)
-        H_p = mc.matrix_matrix_multiply(h_f, f_p)
+        H_K = mc.mat_mat(h_f, f_K)
+        H_T = mc.mat_mat(h_f, f_T)
+        H_p = mc.mat_mat(h_f, f_p)
