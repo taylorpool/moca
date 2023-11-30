@@ -210,6 +210,32 @@ fn test_mat_matT() raises:
             _ = assert_equal(C[Index(i, j)], A[i, 0] * B[j, 0] + A[i, 1] * B[j, 1])
 
 
+fn test_matT_matT() raises:
+    print("# test_matT_matT")
+    var A = Tensor[DType.float64](2, 1)
+    A[Index(0, 0)] = 1.0
+    A[Index(1, 0)] = 2.0
+
+    var B = Tensor[DType.float64](3, 2)
+    B[Index(0, 0)] = 3.0
+    B[Index(0, 1)] = 4.0
+    B[Index(1, 0)] = 5.0
+    B[Index(1, 1)] = 6.0
+    B[Index(2, 0)] = 7.0
+    B[Index(2, 1)] = 8.0
+
+    let C = mc.matT_matT(A, B)
+    print(A)
+    print(B)
+    print(C)
+    _ = assert_equal(C.shape()[0], A.shape()[1])
+    _ = assert_equal(C.shape()[1], B.shape()[0])
+
+    for i in range(C.shape()[0]):
+        for j in range(C.shape()[1]):
+            _ = assert_equal(C[Index(i, j)], A[0, i] * B[j, 0] + A[1, i] * B[j, 1])
+
+
 fn test_mat_vec() raises:
     print("# test_mat_vec")
     var A = Tensor[DType.float64](2, 3)
@@ -652,6 +678,7 @@ fn main() raises:
     _ = test_mat_mat()
     _ = test_matT_mat()
     _ = test_mat_matT()
+    _ = test_matT_matT()
     _ = test_mat_vec()
     _ = test_matT_vec()
     _ = test_matT_vec2()
