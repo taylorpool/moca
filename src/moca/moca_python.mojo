@@ -106,7 +106,7 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
         let rows = A.shape()[0]
         let cols = A.shape()[1]
 
-		let A_np = np.empty((rows, cols), dtype=np.float64)
+    let A_np = np.empty((rows, cols), dtype=np.float64)
 
         let in_pointer = Pointer(
             __mlir_op.`pop.index_to_pointer`[
@@ -136,17 +136,17 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
 
 @value
 struct SVDResult[type: DType = DType.float64]:
-	var u: Tensor[type]
-	var s: Tensor[type]
-	var vh: Tensor[type]
+    var u: Tensor[type]
+    var s: Tensor[type]
+    var vh: Tensor[type]
 
 fn svd(A: Tensor[DType.float64]) -> SVDResult:
-	try:
-		let A_np = tensor2np2d(A)
-		let np = Python.import_module("numpy")
-		let result_np = np.linalg.svd(A_np)
-		var result = SVDResult(np2tensor2d_f64(result_np.U), np2tensor2d_f64(result_np.S), np2tensor2d_f64(result_np.Vh))
-		return result
-	except:
-		print("Failed in SVD")
-		return Tensor[A.dtype]()
+    try:
+    let A_np = tensor2np2d(A)
+    let np = Python.import_module("numpy")
+    let result_np = np.linalg.svd(A_np)
+    var result = SVDResult(np2tensor2d_f64(result_np.U), np2tensor2d_f64(result_np.S), np2tensor2d_f64(result_np.Vh))
+    return result
+    except:
+    print("Failed in SVD")
+    return Tensor[A.dtype]()
