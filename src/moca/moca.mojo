@@ -52,6 +52,18 @@ fn argmax(t: Tensor) -> Int:
 
 # ------------------------- MOCA ------------------------- #
 
+fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
+    var result = SIMD[type, 1](0)
+    let ptr = x.data()
+
+    for i in range(x.num_elements()):
+        result += ptr.load(i) ** 2
+
+    return result
+
+
+fn norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
+    return math.sqrt(squared_norm(x))
 
 fn arange[type: DType = DType.int64](n: Int) -> Tensor[type]:
     var result = Tensor[type](n)
@@ -71,19 +83,19 @@ fn eye[type: DType = DType.float64](n: Int) -> Tensor[type]:
 
 
 fn zeros[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
-    var result = Tensor[type](dims)
+    let result = Tensor[type](dims)
     memset_zero(result.data(), result.num_elements())
     return result
 
 
 fn zeros_like[type: DType](A: Tensor[type]) -> Tensor[type]:
-    var Z = Tensor[type](A.shape())
+    let Z = Tensor[type](A.shape())
     memset_zero(Z.data(), Z.num_elements())
     return Z
 
 
 fn ones[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
-    var result = Tensor[type](dims)
+    let result = Tensor[type](dims)
     let ptr = result.data()
     for i in range(result.num_elements()):
         ptr.simd_store[1](i, 1)
@@ -91,7 +103,7 @@ fn ones[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
 
 
 fn ones_like[type: DType](A: Tensor[type]) -> Tensor[type]:
-    var O = Tensor[type](A.shape())
+    let O = Tensor[type](A.shape())
     let ptr = O.data()
     for i in range(O.num_elements()):
         ptr.simd_store[1](i, 1)
@@ -117,7 +129,7 @@ fn add[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]:
 
 
 fn add[type: DType](lhs: SIMD[type, 1], rhs: Tensor[type]) -> Tensor[type]:
-    var result = rhs
+    let result = rhs
     let ptr = result.data()
     for i in range(result.num_elements()):
         ptr.store(i, lhs + ptr.load(i))
@@ -167,6 +179,13 @@ fn divide[dtype: DType](lhs: Tensor[dtype], rhs: Tensor[dtype]) -> Tensor[dtype]
 
     return result
 
+
+fn divide[type: DType](lhs: Tensor[type], rhs: SIMD[type, 1]) -> Tensor[type]:
+    var result = lhs
+    for i in range(lhs.shape()[0]):
+        result[i] /= rhs
+        
+    return result
 
 fn mat_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
@@ -279,7 +298,7 @@ fn vecT_mat_vec[
     return result
 
 
-fn sub_solve_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+fn solve_from_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
     let n = A.shape()[0]
     var x = Tensor[type](n)
     for i in range(n):
@@ -290,32 +309,71 @@ fn sub_solve_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[t
 
     return x
 
+fn solveT_from_top_left[type: DType](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = At.shape()[0]
+    var x = Tensor[type](n)
+    for i in range(n):
+        x[i] = b[i]
+        for j in range(i):
+            x[i] -= At[j, i] * x[j]
+        x[i] /= At[i, i]
 
-fn sub_solve_top_right[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    return x
+
+
+fn solve_from_top_right[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
     let n = A.shape()[0]
     var x = Tensor[type](n)
     for i in range(n):
         let index = n - i - 1
         x[index] = b[i]
-        for j in range(index + 1, n):
+        for j in range(n - i, n):
             x[index] -= A[i, j] * x[j]
-
         x[index] /= A[i, index]
 
+    return x
 
-fn forward_substitution_solve[
+
+fn solve_from_bottom_left[
     type: DType
-](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let m = L.shape()[0]
-    let n = L.shape()[1]
-    let diff = m - n
+](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = A.shape()[0]
     var x = Tensor[type](n)
     for i in range(n):
-        let i_diff = i + diff
-        x[i] = b[i_diff]
+        let diff = n - 1 - i
+        x[i] = b[diff]
         for j in range(i):
-            x[i] -= L[i_diff, j] * x[j]
-        x[i] /= L[i_diff, i]
+            x[i] -= A[diff, j] * x[j]
+        x[i] /= A[diff, i]
+
+    return x
+
+
+fn solve_from_bottom_right[
+    type: DType
+](A: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = A.shape()[0]
+    var x = Tensor[type](n)
+    for i in range(n):
+        let diff = n - 1 - i
+        x[diff] = b[diff]
+        for j in range(n - i, n):
+            x[diff] -= A[diff, j] * x[j]
+        x[diff] /= A[diff, diff]
+
+    return x
+
+fn solveT_from_bottom_right[
+    type: DType
+](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
+    let n = At.shape()[0]
+    var x = Tensor[type](n)
+    for i in range(n):
+        let diff = n - 1 - i
+        x[diff] = b[diff]
+        for j in range(n - i, n):
+            x[diff] -= At[j, diff] * x[j]
+        x[diff] /= At[diff, diff]
 
     return x
 
@@ -336,56 +394,6 @@ fn forward_substitution_solve_permuted[
 
     return x
 
-
-fn forward_substitution_solve_transpose[
-    type: DType
-](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let m = b.shape()[0]
-    let n = U.shape()[0]
-    let diff = m - n
-    var x = Tensor[type](n)
-    for i in range(n):
-        let i_diff = i + diff
-        x[i] = b[i_diff]
-        for j in range(i):
-            x[i] -= U[j, i_diff] * x[j]
-        x[i] /= U[i_diff, i_diff]
-
-    return x
-
-
-fn back_substitution_solve[
-    type: DType
-](U: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let m = U.shape()[0]
-    let n = U.shape()[1]
-    let diff = m - n
-    var x = Tensor[type](n)  # b
-    for i in range(n - 1, -1, -1):
-        let i_diff = i - diff
-        x[i] = b[i_diff]
-        for j in range(i + 1, n):
-            x[i] -= U[i_diff, j] * x[j]
-        x[i] /= U[i_diff, i_diff]
-    return x
-
-
-fn back_substitution_solve_transpose[
-    type: DType
-](L: Tensor[type], b: Tensor[type]) -> Tensor[type]:
-    let m = b.shape()[0]
-    let n = L.shape()[0]
-    let diff = m - n
-    var x = Tensor[type](n)
-    for i in range(n - 1, -1, -1):
-        let i_diff = i - diff
-        x[i] = b[i_diff]
-        for j in range(i + 1, n):
-            x[i] -= L[j, i_diff] * x[j]
-        x[i] /= L[i_diff, i_diff]
-    return x
-
-
 @value
 struct LU[type: DType]:
     var row_order: Tensor[DType.int64]
@@ -394,7 +402,7 @@ struct LU[type: DType]:
 
     fn solve(self, b: Tensor[type]) -> Tensor[type]:
         let y = forward_substitution_solve_permuted(self.L, b, self.row_order)
-        let x = back_substitution_solve(self.U, y)
+        let x = solve_from_bottom_left(self.U, y)
         return x
 
 
@@ -429,8 +437,8 @@ struct LLT[type: DType]:
     var L: Tensor[type]
 
     fn solve(self, b: Tensor[type]) -> Tensor[type]:
-        let y = forward_substitution_solve(self.L, b)
-        return back_substitution_solve_transpose(self.L, y)
+        let y = solve_from_top_left(self.L, b)
+        return solveT_from_bottom_right(self.L, y)
 
 
 fn llt_factor[type: DType](A: Tensor[type]) -> LLT[type]:
@@ -458,8 +466,8 @@ struct UUT[type: DType]:
     var U: Tensor[type]
 
     fn solve(self, b: Tensor[type]) -> Tensor[type]:
-        let y = back_substitution_solve(self.U, b)
-        return forward_substitution_solve_transpose(self.U, y)
+        let y = solve_from_bottom_right(self.U, b)
+        return solveT_from_top_left(self.U, y)
 
 
 fn uut_factor[type: DType](A: Tensor[type]) -> UUT[type]:
@@ -481,21 +489,58 @@ fn uut_factor[type: DType](A: Tensor[type]) -> UUT[type]:
 
     return uut
 
+@value
+struct EigenPair[type: DType]:
+    var val: SIMD[type, 1]
+    var vec: Tensor[type]
+
+fn power_method[type: DType](A: Tensor[type], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+    var eigen = eigen0
+    for i in range(max_iters):
+        let y = mat_vec(A, eigen.vec)
+        let old_eigen = eigen
+        eigen.vec = divide(y, norm(y))
+        eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
+
+        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        if absoluteError < absTol or relativeDiff < relTol:
+            break
+
+    return eigen
+
+fn shifted_lu_power_method[type: DType](A: Tensor[type], target_eigval: SIMD[type,1], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+    let lu = lu_factor(subtract(A, multiply(target_eigval, eye[A.dtype](A.shape()[0]))))
+    var eigen = eigen0
+    for i in range(max_iters):
+        let y = lu.solve(eigen.vec)
+        let old_eigen = eigen
+        eigen.vec = divide(y, norm(y))
+        eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
+
+        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        if absoluteError < absTol or relativeDiff < relTol:
+            break
+
+    return eigen
+
 
 @value
 struct QR[type: DType]:
+    var row_order: Tensor[DType.int64]
     var Q: Tensor[type]
     var R: Tensor[type]
 
     fn solve(self, b: Tensor[type]) -> Tensor[type]:
         let y = matT_vec(self.Q, b)
-        return back_substitution_solve(self.R, y)
+        return solve_from_bottom_left(self.R, y)
 
 
 fn qr_factor[type: DType](A: Tensor[type]) -> QR[type]:
     let m = A.shape()[0]
     let n = A.shape()[1]
-    var qr = QR[type](Tensor[type](m, m), A)
+    var qr = QR[type](arange(m), Tensor[type](m, m), A)
     for i in range(m):
         qr.Q[Index(i, i)] = 1.0
 
@@ -535,6 +580,13 @@ fn qr_factor[type: DType](A: Tensor[type]) -> QR[type]:
                 qr.Q[i_j] -= 2 * u[i - k] * zq
 
     return qr
+
+
+fn qr_iteration[type: DType](A0: Tensor[type], max_iters: Int = 100):
+    let A = A0
+    for i in range(max_iters):
+        let qr = qr_factor(A)
+        A = mat_vec(qr.R, qr.Q)
 
 
 fn solve_homogeneous_equation[
@@ -605,16 +657,6 @@ fn diag[type: DType](v: Tensor[type]) -> Tensor[type]:
         for i in range(n):
             result[i] = v[i, i]
             return result
-
-
-fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
-    var result = SIMD[type, 1](0)
-    let ptr = x.data()
-
-    for i in range(x.num_elements()):
-        result += ptr.load(i) ** 2
-
-    return result
 
 
 @value

@@ -2,6 +2,7 @@ import moca as mc
 
 from testing import assert_almost_equal, assert_equal
 from utils.index import Index
+import random
 
 
 fn test_arange() raises:
@@ -126,6 +127,14 @@ fn test_multiply2() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i] * y, z[i])
 
+
+fn test_divide2() raises:
+    print("# test_divide2")
+    let x = mc.arange[DType.float64](3)
+    let y: SIMD[x.dtype,1] = 4.0
+    let z = mc.divide(x,y)
+    for i in range(z.shape()[0]):
+        _ = assert_almost_equal(z[i], x[i]/y)
 
 fn test_mat_mat() raises:
     print("# test_mat_mat")
@@ -298,26 +307,126 @@ fn test_vecT_mat_vec() raises:
     _ = assert_equal(result, 0)
 
 
-fn test_forward_substition_solve() raises:
-    print("# test_forward_substitution_solve")
-    var L = Tensor[DType.float64](2, 2)
-    L[Index(0, 0)] = 1.0
-    L[Index(1, 0)] = 2.0
-    L[Index(1, 1)] = 3.0
+fn test_solve_from_top_left() raises:
+    print("# test_solve_from_top_left")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 2.0
+    A[Index(0, 1)] = 0.0
+    A[Index(1, 0)] = 3.0
+    A[Index(1, 1)] = 1.0
 
-    var b = Tensor[DType.float64](L.shape()[0])
-    b[0] = -1.0
-    b[1] = -2.0
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
 
-    let x = mc.forward_substitution_solve(L, b)
-    _ = assert_equal(x.shape()[0], L.shape()[1])
+    let b = mc.mat_vec(A, true_x)
 
-    let y = mc.mat_vec(L, x)
-    _ = assert_equal(y.shape()[0], b.shape()[0])
+    let x = mc.solve_from_top_left(A, b)
 
-    for i in range(y.shape()[0]):
-        _ = assert_almost_equal(y[i], b[i])
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
 
+fn test_solveT_from_top_left() raises:
+    print("# test_solveT_from_top_left")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 2.0
+    A[Index(0, 1)] = 3.0
+    A[Index(1, 0)] = 0.0
+    A[Index(1, 1)] = 1.0
+
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
+
+    let b = mc.matT_vec(A, true_x)
+
+    let x = mc.solveT_from_top_left(A, b)
+
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
+
+
+fn test_solve_from_top_right() raises:
+    print("# test_solve_from_top_right")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 0.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 3.0
+    A[Index(1, 1)] = 1.0
+
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
+
+    let b = mc.mat_vec(A, true_x)
+
+    let x = mc.solve_from_top_right(A, b)
+
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
+
+fn test_solve_from_bottom_left() raises:
+    print("# test_solve_from_bottom_left")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 3.0
+    A[Index(1, 1)] = 0.0
+
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
+
+    let b = mc.mat_vec(A, true_x)
+
+    let x = mc.solve_from_bottom_left(A, b)
+
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
+
+fn test_solve_from_bottom_right() raises:
+    print("# test_solve_from_bottom_right")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 0.0
+    A[Index(1, 1)] = 3.0
+
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
+
+    let b = mc.mat_vec(A, true_x)
+
+    let x = mc.solve_from_bottom_right(A, b)
+
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
+
+fn test_solveT_from_bottom_right() raises:
+    print("# test_solveT_from_bottom_right")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 3.0
+    A[Index(1, 1)] = 0.0
+
+    var true_x = Tensor[DType.float64](2)
+    true_x[0] = 2.0
+    true_x[1] = 4.0
+
+    let b = mc.matT_vec(A, true_x)
+
+    let x = mc.solveT_from_bottom_right(A, b)
+
+    _ = assert_equal(x.shape()[0], true_x.shape()[0])
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], true_x[i])
 
 fn test_forward_substitution_solve_permuted() raises:
     print("# test_forward_substitution_solve_permuted")
@@ -343,18 +452,164 @@ fn test_forward_substitution_solve_permuted() raises:
     for i in range(y.shape()[0]):
         _ = assert_almost_equal(y[row_order[i].to_int()], b[i])
 
+fn test_lu_solve() raises:
+    print("# test_lu_solve")
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 3.0
+    A[Index(1, 1)] = 4.0
 
-fn test_forward_substitution_solve_transpose() raises:
-    print("# test_forward_substitution_solve_transpose")
-    var U = Tensor[DType.float64](2, 2)
-    U[Index(0, 0)] = 1.0
-    U[Index(0, 1)] = 2.0
-    U[Index(1, 0)] = 3.0
+    var x_true = Tensor[DType.float64](2)
+    x_true[0] = 1.0
+    x_true[1] = -2.0
 
-    var b = Tensor[DType.float64](U.shape()[0])
-    b[0] = -1.0
-    b[1] = -2.0
+    let b = mc.mat_vec(A, x_true)
 
+    let x = mc.lu_factor(A).solve(b)
+
+    _ = assert_equal(x.shape()[0], x_true.shape()[0])
+
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], x_true[i])
+
+fn test_llt_factor() raises:
+    print("# test_llt_factor")
+    var L_true = Tensor[DType.float64](3,3)
+    L_true[Index(0,0)] = 1.0
+    L_true[Index(0,1)] = 0.0
+    L_true[Index(0,2)] = 0.0
+    L_true[Index(1,0)] = 2.0
+    L_true[Index(1,1)] = 3.0
+    L_true[Index(1,2)] = 0.0
+    L_true[Index(2,0)] = 4.0
+    L_true[Index(2,1)] = 5.0
+    L_true[Index(2,2)] = 6.0
+
+    let A = mc.mat_matT(L_true, L_true)
+
+    let llt = mc.llt_factor(A)
+    _ = assert_equal(llt.L.shape()[0], L_true.shape()[0])
+    _ = assert_equal(llt.L.shape()[1], L_true.shape()[1])
+
+    for i in range(llt.L.shape()[0]):
+        for j in range(llt.L.shape()[1]):
+            _ = assert_almost_equal(llt.L[i,j], L_true[i,j])
+
+fn test_uut_factor() raises:
+    print("# test_uut_factor")
+    var U_true = Tensor[DType.float64](3,3)
+    U_true[Index(0,0)] = 1.0
+    U_true[Index(0,1)] = 2.0
+    U_true[Index(0,2)] = 3.0
+    U_true[Index(1,0)] = 0.0
+    U_true[Index(1,1)] = 4.0
+    U_true[Index(1,2)] = 5.0
+    U_true[Index(2,0)] = 0.0
+    U_true[Index(2,1)] = 0.0
+    U_true[Index(2,2)] = 6.0
+
+    let A = mc.mat_matT(U_true, U_true)
+
+    let uut = mc.uut_factor(A)
+    _ = assert_equal(uut.U.shape()[0], U_true.shape()[0])
+    _ = assert_equal(uut.U.shape()[1], U_true.shape()[1])
+
+    for i in range(uut.U.shape()[0]):
+        for j in range(uut.U.shape()[1]):
+            _ = assert_almost_equal(uut.U[i,j], U_true[i,j])
+
+fn test_llt_solve() raises:
+    print("# test_llt_solve")
+    var L_true = Tensor[DType.float64](3,3)
+    L_true[Index(0,0)] = 1.0
+    L_true[Index(0,1)] = 0.0
+    L_true[Index(0,2)] = 0.0
+    L_true[Index(1,0)] = 2.0
+    L_true[Index(1,1)] = 3.0
+    L_true[Index(1,2)] = 0.0
+    L_true[Index(2,0)] = 4.0
+    L_true[Index(2,1)] = 5.0
+    L_true[Index(2,2)] = 6.0
+
+    let A = mc.mat_matT(L_true, L_true)
+
+    var x_true = Tensor[DType.float64](3)
+    x_true[0] = 1.0
+    x_true[1] = -2.0
+    x_true[2] = 3.0
+
+    let b = mc.mat_vec(A, x_true)
+
+    let llt = mc.llt_factor(A)
+    let x = llt.solve(b)
+
+    _ = assert_equal(x.shape()[0], x_true.shape()[0])
+
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], x_true[i])
+
+fn test_uut_solve() raises:
+    print("# test_uut_solve")
+    var U_true = Tensor[DType.float64](3,3)
+    U_true[Index(0,0)] = 1.0
+    U_true[Index(0,1)] = 2.0
+    U_true[Index(0,2)] = 3.0
+    U_true[Index(1,0)] = 0.0
+    U_true[Index(1,1)] = 4.0
+    U_true[Index(1,2)] = 5.0
+    U_true[Index(2,0)] = 0.0
+    U_true[Index(2,1)] = 0.0
+    U_true[Index(2,2)] = 6.0
+
+    let A = mc.mat_matT(U_true, U_true)
+
+    var x_true = Tensor[DType.float64](3)
+    x_true[0] = 1.0
+    x_true[1] = -2.0
+    x_true[2] = 3.0
+
+    let b = mc.mat_vec(A, x_true)
+
+    let uut = mc.uut_factor(A)
+    let x = uut.solve(b)
+
+    _ = assert_equal(x.shape()[0], x_true.shape()[0])
+
+    for i in range(x.shape()[0]):
+        _ = assert_almost_equal(x[i], x_true[i])
+
+fn test_power_method():
+    print("# test_power_method")
+    var A = Tensor[DType.float64](2,2)
+    A[Index(0,0)] = 2.0
+    A[Index(0,1)] = 0.0
+    A[Index(1,0)] = 0.0
+    A[Index(1,1)] = 1.0
+
+    let eigen = mc.power_method(A, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1])))
+
+    _ = assert_equal(eigen.vec.shape()[0], A.shape()[1])
+    _ = assert_almost_equal(eigen.val, A[Index(0,0)])
+    _ = assert_almost_equal(eigen.vec[0], 1.0)
+    _ = assert_almost_equal(eigen.vec[1], 0.0)
+
+fn test_shifted_lu_power_method1():
+    print("# test_shifted_lu_power_method")
+    var A = Tensor[DType.float64](2,2)
+    A[Index(0,0)] = 2.0
+    A[Index(0,1)] = 0.0
+    A[Index(1,0)] = 1.0
+    A[Index(1,1)] = 0.0
+
+    let target_eigval = 1.0
+
+    let eigen = mc.shifted_lu_power_method(A, target_eigval, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1])))
+
+    _ = assert_equal(eigen.vec.shape()[0], A.shape()[1])
+    _ = assert_almost_equal(eigen.val, target_eigval)
+    _ = assert_almost_equal(eigen.vec[0], 1.0)
+    _ = assert_almost_equal(eigen.vec[1], 0.0)
 
 fn main() raises:
     _ = test_arange()
@@ -371,6 +626,7 @@ fn main() raises:
     _ = test_subtract()
     _ = test_multiply()
     _ = test_multiply2()
+    _ = test_divide2()
     _ = test_mat_mat()
     _ = test_matT_mat()
     _ = test_mat_matT()
@@ -380,5 +636,17 @@ fn main() raises:
     _ = test_vecT_vec()
     _ = test_vec_vecT()
     _ = test_vecT_mat_vec()
-    _ = test_forward_substition_solve()
     _ = test_forward_substitution_solve_permuted()
+    _ = test_solve_from_top_left()
+    _ = test_solve_from_top_right()
+    _ = test_solve_from_bottom_left()
+    _ = test_solve_from_bottom_right()
+    _ = test_solveT_from_top_left()
+    _ = test_solveT_from_bottom_right()
+    _ = test_lu_solve()
+    _ = test_llt_factor()
+    _ = test_uut_factor()
+    _ = test_llt_solve()
+    _ = test_uut_solve()
+    _ = test_power_method()
+    _ = test_shifted_lu_power_method1()
