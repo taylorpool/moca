@@ -131,10 +131,11 @@ fn test_multiply2() raises:
 fn test_divide2() raises:
     print("# test_divide2")
     let x = mc.arange[DType.float64](3)
-    let y: SIMD[x.dtype,1] = 4.0
-    let z = mc.divide(x,y)
+    let y: SIMD[x.dtype, 1] = 4.0
+    let z = mc.divide(x, y)
     for i in range(z.shape()[0]):
-        _ = assert_almost_equal(z[i], x[i]/y)
+        _ = assert_almost_equal(z[i], x[i] / y)
+
 
 fn test_mat_mat() raises:
     print("# test_mat_mat")
@@ -327,6 +328,7 @@ fn test_solve_from_top_left() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], true_x[i])
 
+
 fn test_solveT_from_top_left() raises:
     print("# test_solveT_from_top_left")
     var A = Tensor[DType.float64](2, 2)
@@ -368,6 +370,7 @@ fn test_solve_from_top_right() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], true_x[i])
 
+
 fn test_solve_from_bottom_left() raises:
     print("# test_solve_from_bottom_left")
     var A = Tensor[DType.float64](2, 2)
@@ -387,6 +390,7 @@ fn test_solve_from_bottom_left() raises:
     _ = assert_equal(x.shape()[0], true_x.shape()[0])
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], true_x[i])
+
 
 fn test_solve_from_bottom_right() raises:
     print("# test_solve_from_bottom_right")
@@ -408,6 +412,7 @@ fn test_solve_from_bottom_right() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], true_x[i])
 
+
 fn test_solveT_from_bottom_right() raises:
     print("# test_solveT_from_bottom_right")
     var A = Tensor[DType.float64](2, 2)
@@ -427,6 +432,7 @@ fn test_solveT_from_bottom_right() raises:
     _ = assert_equal(x.shape()[0], true_x.shape()[0])
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], true_x[i])
+
 
 fn test_forward_substitution_solve_permuted() raises:
     print("# test_forward_substitution_solve_permuted")
@@ -452,6 +458,7 @@ fn test_forward_substitution_solve_permuted() raises:
     for i in range(y.shape()[0]):
         _ = assert_almost_equal(y[row_order[i].to_int()], b[i])
 
+
 fn test_lu_solve() raises:
     print("# test_lu_solve")
     var A = Tensor[DType.float64](2, 2)
@@ -473,18 +480,19 @@ fn test_lu_solve() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], x_true[i])
 
+
 fn test_llt_factor() raises:
     print("# test_llt_factor")
-    var L_true = Tensor[DType.float64](3,3)
-    L_true[Index(0,0)] = 1.0
-    L_true[Index(0,1)] = 0.0
-    L_true[Index(0,2)] = 0.0
-    L_true[Index(1,0)] = 2.0
-    L_true[Index(1,1)] = 3.0
-    L_true[Index(1,2)] = 0.0
-    L_true[Index(2,0)] = 4.0
-    L_true[Index(2,1)] = 5.0
-    L_true[Index(2,2)] = 6.0
+    var L_true = Tensor[DType.float64](3, 3)
+    L_true[Index(0, 0)] = 1.0
+    L_true[Index(0, 1)] = 0.0
+    L_true[Index(0, 2)] = 0.0
+    L_true[Index(1, 0)] = 2.0
+    L_true[Index(1, 1)] = 3.0
+    L_true[Index(1, 2)] = 0.0
+    L_true[Index(2, 0)] = 4.0
+    L_true[Index(2, 1)] = 5.0
+    L_true[Index(2, 2)] = 6.0
 
     let A = mc.mat_matT(L_true, L_true)
 
@@ -494,20 +502,21 @@ fn test_llt_factor() raises:
 
     for i in range(llt.L.shape()[0]):
         for j in range(llt.L.shape()[1]):
-            _ = assert_almost_equal(llt.L[i,j], L_true[i,j])
+            _ = assert_almost_equal(llt.L[i, j], L_true[i, j])
+
 
 fn test_uut_factor() raises:
     print("# test_uut_factor")
-    var U_true = Tensor[DType.float64](3,3)
-    U_true[Index(0,0)] = 1.0
-    U_true[Index(0,1)] = 2.0
-    U_true[Index(0,2)] = 3.0
-    U_true[Index(1,0)] = 0.0
-    U_true[Index(1,1)] = 4.0
-    U_true[Index(1,2)] = 5.0
-    U_true[Index(2,0)] = 0.0
-    U_true[Index(2,1)] = 0.0
-    U_true[Index(2,2)] = 6.0
+    var U_true = Tensor[DType.float64](3, 3)
+    U_true[Index(0, 0)] = 1.0
+    U_true[Index(0, 1)] = 2.0
+    U_true[Index(0, 2)] = 3.0
+    U_true[Index(1, 0)] = 0.0
+    U_true[Index(1, 1)] = 4.0
+    U_true[Index(1, 2)] = 5.0
+    U_true[Index(2, 0)] = 0.0
+    U_true[Index(2, 1)] = 0.0
+    U_true[Index(2, 2)] = 6.0
 
     let A = mc.mat_matT(U_true, U_true)
 
@@ -517,20 +526,21 @@ fn test_uut_factor() raises:
 
     for i in range(uut.U.shape()[0]):
         for j in range(uut.U.shape()[1]):
-            _ = assert_almost_equal(uut.U[i,j], U_true[i,j])
+            _ = assert_almost_equal(uut.U[i, j], U_true[i, j])
+
 
 fn test_llt_solve() raises:
     print("# test_llt_solve")
-    var L_true = Tensor[DType.float64](3,3)
-    L_true[Index(0,0)] = 1.0
-    L_true[Index(0,1)] = 0.0
-    L_true[Index(0,2)] = 0.0
-    L_true[Index(1,0)] = 2.0
-    L_true[Index(1,1)] = 3.0
-    L_true[Index(1,2)] = 0.0
-    L_true[Index(2,0)] = 4.0
-    L_true[Index(2,1)] = 5.0
-    L_true[Index(2,2)] = 6.0
+    var L_true = Tensor[DType.float64](3, 3)
+    L_true[Index(0, 0)] = 1.0
+    L_true[Index(0, 1)] = 0.0
+    L_true[Index(0, 2)] = 0.0
+    L_true[Index(1, 0)] = 2.0
+    L_true[Index(1, 1)] = 3.0
+    L_true[Index(1, 2)] = 0.0
+    L_true[Index(2, 0)] = 4.0
+    L_true[Index(2, 1)] = 5.0
+    L_true[Index(2, 2)] = 6.0
 
     let A = mc.mat_matT(L_true, L_true)
 
@@ -549,18 +559,19 @@ fn test_llt_solve() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], x_true[i])
 
+
 fn test_uut_solve() raises:
     print("# test_uut_solve")
-    var U_true = Tensor[DType.float64](3,3)
-    U_true[Index(0,0)] = 1.0
-    U_true[Index(0,1)] = 2.0
-    U_true[Index(0,2)] = 3.0
-    U_true[Index(1,0)] = 0.0
-    U_true[Index(1,1)] = 4.0
-    U_true[Index(1,2)] = 5.0
-    U_true[Index(2,0)] = 0.0
-    U_true[Index(2,1)] = 0.0
-    U_true[Index(2,2)] = 6.0
+    var U_true = Tensor[DType.float64](3, 3)
+    U_true[Index(0, 0)] = 1.0
+    U_true[Index(0, 1)] = 2.0
+    U_true[Index(0, 2)] = 3.0
+    U_true[Index(1, 0)] = 0.0
+    U_true[Index(1, 1)] = 4.0
+    U_true[Index(1, 2)] = 5.0
+    U_true[Index(2, 0)] = 0.0
+    U_true[Index(2, 1)] = 0.0
+    U_true[Index(2, 2)] = 6.0
 
     let A = mc.mat_matT(U_true, U_true)
 
@@ -579,37 +590,171 @@ fn test_uut_solve() raises:
     for i in range(x.shape()[0]):
         _ = assert_almost_equal(x[i], x_true[i])
 
+
 fn test_power_method():
     print("# test_power_method")
-    var A = Tensor[DType.float64](2,2)
-    A[Index(0,0)] = 2.0
-    A[Index(0,1)] = 0.0
-    A[Index(1,0)] = 0.0
-    A[Index(1,1)] = 1.0
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 2.0
+    A[Index(0, 1)] = 0.0
+    A[Index(1, 0)] = 0.0
+    A[Index(1, 1)] = 1.0
 
-    let eigen = mc.power_method(A, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1])))
+    let eigen = mc.power_method(
+        A, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1]))
+    )
 
     _ = assert_equal(eigen.vec.shape()[0], A.shape()[1])
-    _ = assert_almost_equal(eigen.val, A[Index(0,0)])
+    _ = assert_almost_equal(eigen.val, A[Index(0, 0)])
     _ = assert_almost_equal(eigen.vec[0], 1.0)
     _ = assert_almost_equal(eigen.vec[1], 0.0)
 
+
 fn test_shifted_lu_power_method1():
     print("# test_shifted_lu_power_method")
-    var A = Tensor[DType.float64](2,2)
-    A[Index(0,0)] = 2.0
-    A[Index(0,1)] = 0.0
-    A[Index(1,0)] = 1.0
-    A[Index(1,1)] = 0.0
+    var A = Tensor[DType.float64](2, 2)
+    A[Index(0, 0)] = 2.0
+    A[Index(0, 1)] = 0.0
+    A[Index(1, 0)] = 1.0
+    A[Index(1, 1)] = 0.0
 
     let target_eigval = 1.0
 
-    let eigen = mc.shifted_lu_power_method(A, target_eigval, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1])))
+    let eigen = mc.shifted_lu_power_method(
+        A, target_eigval, mc.EigenPair[A.dtype](0, random.rand[A.dtype](A.shape()[1]))
+    )
 
     _ = assert_equal(eigen.vec.shape()[0], A.shape()[1])
     _ = assert_almost_equal(eigen.val, target_eigval)
     _ = assert_almost_equal(eigen.vec[0], 1.0)
     _ = assert_almost_equal(eigen.vec[1], 0.0)
+
+
+fn test_copy_row():
+    print("# test_copy_row")
+    var A = Tensor[DType.float64](1, 4)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(0, 2)] = 3.0
+    A[Index(0, 3)] = 4.0
+
+    let x = mc.copy_row(A, 0)
+
+    _ = assert_equal(x.shape()[0], A.shape()[1])
+
+    for i in range(x.shape()[0]):
+        _ = assert_equal(x[i], A[0, i])
+
+
+fn test_copy_row2():
+    print("# test_copy_row2")
+    var A = Tensor[DType.float64](1, 4)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(0, 2)] = 3.0
+    A[Index(0, 3)] = 4.0
+
+    let start_col = 1
+
+    let x = mc.copy_row(A, 0, start_col)
+    _ = assert_equal(x.shape()[0], A.shape()[1] - start_col)
+
+    for i in range(x.shape()[0]):
+        _ = assert_equal(x[i], A[0, i + start_col])
+
+
+fn test_copy_col():
+    print("# test_copy_col")
+    var A = Tensor[DType.float64](4, 1)
+    A[Index(0, 0)] = 1.0
+    A[Index(1, 0)] = 2.0
+    A[Index(2, 0)] = 3.0
+    A[Index(3, 0)] = 4.0
+
+    let x = mc.copy_col(A, 0)
+
+    _ = assert_equal(x.shape()[0], A.shape()[0])
+
+    for i in range(x.shape()[0]):
+        _ = assert_equal(x[i], A[i, 0])
+
+
+fn test_copy_col2():
+    print("# test_copy_col2")
+    var A = Tensor[DType.float64](1, 4)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(0, 2)] = 3.0
+    A[Index(0, 3)] = 4.0
+
+    let start_row = 1
+
+    let x = mc.copy_col(A, 0, start_row)
+    _ = assert_equal(x.shape()[0], A.shape()[0] - start_row)
+
+    for i in range(x.shape()[0]):
+        _ = assert_equal(x[i], A[i + start_row, 0])
+
+
+fn test_transpose():
+    print("# test_transpose")
+    var A = Tensor[DType.float64](3, 2)
+    A[Index(0, 0)] = 1.0
+    A[Index(0, 1)] = 2.0
+    A[Index(1, 0)] = 4.0
+    A[Index(1, 1)] = 5.0
+    A[Index(2, 0)] = 7.0
+    A[Index(2, 1)] = 8.0
+
+    let At = mc.transpose(A)
+
+    _ = assert_equal(At.shape()[0], A.shape()[1])
+    _ = assert_equal(At.shape()[1], A.shape()[0])
+
+    for i in range(At.shape()[0]):
+        for j in range(At.shape()[1]):
+            _ = assert_equal(At[i, j], A[j, i])
+
+
+fn test_hessenberg_factor():
+    print("# test_hessenberg_factor")
+    var A_true = Tensor[DType.float64](3, 3)
+    A_true[Index(0, 0)] = 1.0
+    A_true[Index(0, 1)] = 2.0
+    A_true[Index(0, 2)] = 3.0
+    A_true[Index(1, 0)] = 4.0
+    A_true[Index(1, 1)] = 5.0
+    A_true[Index(1, 2)] = 6.0
+    A_true[Index(2, 0)] = 7.0
+    A_true[Index(2, 1)] = 8.0
+    A_true[Index(2, 2)] = 9.0
+
+    let h = mc.hessenberg_factor(A_true)
+
+    _ = assert_equal(h.Q.shape()[0], A_true.shape()[0])
+    _ = assert_equal(h.Q.shape()[1], A_true.shape()[0])
+    _ = assert_equal(h.H.shape()[0], A_true.shape()[0])
+    _ = assert_equal(h.H.shape()[1], A_true.shape()[1])
+
+    for i in range(A_true.shape()[0]):
+        for j in range(i - 1):
+            _ = assert_almost_equal(h.H[i, j], 0.0)
+
+    let QtQ = mc.matT_mat(h.Q, h.Q)
+    for i in range(QtQ.shape()[0]):
+        for j in range(QtQ.shape()[1]):
+            if i == j:
+                _ = assert_almost_equal(QtQ[i, j], 1.0)
+            else:
+                _ = assert_almost_equal(QtQ[i, j], 0.0)
+
+    let A = mc.mat_mat(h.Q, mc.mat_matT(h.H, h.Q))
+    _ = assert_equal(A.shape()[0], A_true.shape()[0])
+    _ = assert_equal(A.shape()[1], A_true.shape()[1])
+
+    for i in range(A.shape()[0]):
+        for j in range(A.shape()[1]):
+            _ = assert_almost_equal(A[i, j], A_true[i, j])
+
 
 fn main() raises:
     _ = test_arange()
@@ -650,3 +795,9 @@ fn main() raises:
     _ = test_uut_solve()
     _ = test_power_method()
     _ = test_shifted_lu_power_method1()
+    _ = test_copy_row()
+    _ = test_copy_row2()
+    _ = test_copy_col()
+    _ = test_copy_col2()
+    _ = test_transpose()
+    _ = test_hessenberg_factor()

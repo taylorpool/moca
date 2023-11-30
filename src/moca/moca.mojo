@@ -52,6 +52,7 @@ fn argmax(t: Tensor) -> Int:
 
 # ------------------------- MOCA ------------------------- #
 
+
 fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     var result = SIMD[type, 1](0)
     let ptr = x.data()
@@ -64,6 +65,7 @@ fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
 
 fn norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     return math.sqrt(squared_norm(x))
+
 
 fn arange[type: DType = DType.int64](n: Int) -> Tensor[type]:
     var result = Tensor[type](n)
@@ -184,8 +186,9 @@ fn divide[type: DType](lhs: Tensor[type], rhs: SIMD[type, 1]) -> Tensor[type]:
     var result = lhs
     for i in range(lhs.shape()[0]):
         result[i] /= rhs
-        
+
     return result
+
 
 fn mat_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
     let m = lhs.shape()[0]
@@ -309,6 +312,7 @@ fn solve_from_top_left[type: DType](A: Tensor[type], b: Tensor[type]) -> Tensor[
 
     return x
 
+
 fn solveT_from_top_left[type: DType](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
     let n = At.shape()[0]
     var x = Tensor[type](n)
@@ -363,6 +367,7 @@ fn solve_from_bottom_right[
 
     return x
 
+
 fn solveT_from_bottom_right[
     type: DType
 ](At: Tensor[type], b: Tensor[type]) -> Tensor[type]:
@@ -393,6 +398,34 @@ fn forward_substitution_solve_permuted[
         x[i] /= L[i_diff, i]
 
     return x
+
+
+fn copy_row[type: DType](A: Tensor[type], row: Int, start_col: Int = 0) -> Tensor[type]:
+    let x = Tensor[type](A.shape()[1] - start_col)
+    var ptr = x.data()
+    for j in range(start_col, A.shape()[1]):
+        ptr.simd_store(A[row, j])
+        ptr += 1
+    return x
+
+
+fn copy_col[type: DType](A: Tensor[type], col: Int, start_row: Int = 0) -> Tensor[type]:
+    let x = Tensor[type](A.shape()[0] - start_row)
+    var ptr = x.data()
+    for i in range(start_row, A.shape()[0]):
+        ptr.simd_store(A[i, col])
+        ptr += 1
+    return x
+
+
+fn transpose[type: DType](A: Tensor[type]) -> Tensor[type]:
+    var At = Tensor[A.dtype](A.shape()[1], A.shape()[0])
+    for i in range(At.shape()[0]):
+        for j in range(At.shape()[1]):
+            At[Index(i, j)] = A[j, i]
+
+    return At
+
 
 @value
 struct LU[type: DType]:
@@ -489,12 +522,22 @@ fn uut_factor[type: DType](A: Tensor[type]) -> UUT[type]:
 
     return uut
 
+
 @value
 struct EigenPair[type: DType]:
     var val: SIMD[type, 1]
     var vec: Tensor[type]
 
-fn power_method[type: DType](A: Tensor[type], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+
+fn power_method[
+    type: DType
+](
+    A: Tensor[type],
+    eigen0: EigenPair[type],
+    max_iters: Int = 100,
+    absTol: SIMD[type, 1] = 1e-12,
+    relTol: SIMD[type, 1] = 1e-12,
+) -> EigenPair[type]:
     var eigen = eigen0
     for i in range(max_iters):
         let y = mat_vec(A, eigen.vec)
@@ -502,14 +545,28 @@ fn power_method[type: DType](A: Tensor[type], eigen0: EigenPair[type], max_iters
         eigen.vec = divide(y, norm(y))
         eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
 
-        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
-        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        let absoluteError = squared_norm(
+            subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec))
+        )
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (
+            eigen.val - old_eigen.val
+        ) ** 2
         if absoluteError < absTol or relativeDiff < relTol:
             break
 
     return eigen
 
-fn shifted_lu_power_method[type: DType](A: Tensor[type], target_eigval: SIMD[type,1], eigen0: EigenPair[type], max_iters: Int = 100, absTol: SIMD[type,1] = 1e-12, relTol: SIMD[type, 1] = 1e-12) -> EigenPair[type]:
+
+fn shifted_lu_power_method[
+    type: DType
+](
+    A: Tensor[type],
+    target_eigval: SIMD[type, 1],
+    eigen0: EigenPair[type],
+    max_iters: Int = 100,
+    absTol: SIMD[type, 1] = 1e-12,
+    relTol: SIMD[type, 1] = 1e-12,
+) -> EigenPair[type]:
     let lu = lu_factor(subtract(A, multiply(target_eigval, eye[A.dtype](A.shape()[0]))))
     var eigen = eigen0
     for i in range(max_iters):
@@ -518,8 +575,12 @@ fn shifted_lu_power_method[type: DType](A: Tensor[type], target_eigval: SIMD[typ
         eigen.vec = divide(y, norm(y))
         eigen.val = vecT_mat_vec(eigen.vec, A, eigen.vec)
 
-        let absoluteError = squared_norm(subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec)))
-        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (eigen.val - old_eigen.val)**2
+        let absoluteError = squared_norm(
+            subtract(multiply(eigen.val, eigen.vec), mat_vec(A, eigen.vec))
+        )
+        let relativeDiff = squared_norm(subtract(eigen.vec, old_eigen.vec)) + (
+            eigen.val - old_eigen.val
+        ) ** 2
         if absoluteError < absTol or relativeDiff < relTol:
             break
 
@@ -540,26 +601,14 @@ struct QR[type: DType]:
 fn qr_factor[type: DType](A: Tensor[type]) -> QR[type]:
     let m = A.shape()[0]
     let n = A.shape()[1]
-    var qr = QR[type](arange(m), Tensor[type](m, m), A)
-    for i in range(m):
-        qr.Q[Index(i, i)] = 1.0
+    var qr = QR[type](arange(m), eye[type](m), A)
 
     for k in range(n):
         # Compute u
-        let u_dim = n - k
-        var u = Tensor[type](u_dim)
-        var v: SIMD[type, 1] = 0
-        u[0] = qr.R[k, k]
-        for i in range(1, u_dim):
-            u[i] = qr.R[i + k, k]
-            v += u[i] * u[i]
-        if u[0] >= 0:
-            u[0] += math.sqrt(v + u[0] * u[0])
-        else:
-            u[0] -= math.sqrt(v + u[0] * u[0])
-        let u_norm = math.sqrt(v + u[0] * u[0])
-        for i in range(u_dim):
-            u[i] /= u_norm
+        var u = copy_col(qr.R, k, k)
+        u[0] += math.copysign(norm(u), u[0])
+        u = divide(u, norm(u))
+        let u_dim = u.shape()[0]
 
         # Modify R
         for j in range(k, n):
@@ -579,14 +628,94 @@ fn qr_factor[type: DType](A: Tensor[type]) -> QR[type]:
                 let i_j = Index(i, j)
                 qr.Q[i_j] -= 2 * u[i - k] * zq
 
+    qr.Q = transpose(qr.Q)
+
     return qr
 
 
+fn householder_redirect[type: DType](inout u: Tensor[type]):
+    u[0] += math.copysign(norm(u), u[0])
+    u = divide(u, norm(u))
+
+
+@value
+struct Hessenberg[type: DType]:
+    """A = QHQT."""
+
+    var H: Tensor[type]
+    var Q: Tensor[type]
+
+
+fn hessenberg_factor[type: DType](A: Tensor[type]) -> Hessenberg[type]:
+    let m = A.shape()[0]
+    let n = A.shape()[1]
+    var hessenberg = Hessenberg(A, eye[type](m))
+    for k in range(n - 2):
+        let kp1 = k + 1
+        var u = copy_col(hessenberg.H, k, start_row=kp1)
+        householder_redirect(u)
+
+        for j in range(k, hessenberg.H.shape()[1]):
+            var v: SIMD[type, 1] = 0
+            for i in range(u.shape()[0]):
+                v += u[i] * hessenberg.H[i + kp1, j]
+            v *= 2
+            for i in range(u.shape()[0]):
+                hessenberg.H[Index(i + kp1, j)] -= u[i] * v
+
+        for i in range(m):
+            var v: SIMD[type, 1] = 0
+            for j in range(u.shape()[0]):
+                v += hessenberg.H[i, j + kp1] * u[j]
+            v *= 2
+            for j in range(u.shape()[0]):
+                hessenberg.H[Index(i, j + kp1)] -= v * u[j]
+
+        for j in range(m):
+            var v: SIMD[type, 1] = 0
+            for i in range(u.shape()[0]):
+                v += u[i] * hessenberg.Q[kp1 + i]
+            v *= 2
+            for i in range(u.shape()[0]):
+                hessenberg.Q[Index(i + kp1, j)] -= v * u[i]
+
+    hessenberg.Q = transpose(hessenberg.Q)
+
+    return hessenberg
+
+
 fn qr_iteration[type: DType](A0: Tensor[type], max_iters: Int = 100):
-    let A = A0
+    var A = A0
     for i in range(max_iters):
         let qr = qr_factor(A)
         A = mat_vec(qr.R, qr.Q)
+
+
+fn qr_from_hessenberg[type: DType](H: Tensor[type]) -> QR[type]:
+    let m = H.shape()[0]
+    let n = H.shape()[1]
+    var qr = QR(arange(H.shape()[0]), eye[type](m), H)
+    for j in range(math.min(n, m)):
+        let i = j + 1
+        let im1 = i - 1
+        let a = qr.R[im1, j]
+        let b = qr.R[i, j]
+        var G = Tensor[type](2, 2)
+        let ab_norm = math.sqrt(a**2 + b**2)
+        G[Index(0, 0)] = a / ab_norm
+        G[Index(0, 1)] = b / ab_norm
+        G[Index(1, 0)] = -G[0, 1]
+        G[Index(1, 1)] = G[0, 0]
+        for k in range(i - 1, i + 2):
+            for r in range(j, qr.R.shape()[1]):
+                qr.R[Index(k, r)] = G[k, 0] * qr.R[0, r] + G[k, 1] * qr.R[1, r]
+        for k in range(i - 1, i + 2):
+            for r in range(i + 2):
+                qr.Q[Index(k, r)] = G[k, 0] * qr.Q[0, r] + G[k, 1] * qr.Q[1, r]
+
+    qr.Q = transpose(qr.Q)
+
+    return qr
 
 
 fn solve_homogeneous_equation[
@@ -644,26 +773,24 @@ fn solve_homogeneous_equation[
 
 
 fn diag[type: DType](v: Tensor[type]) -> Tensor[type]:
+    let n = v.shape()[0]
     if v.shape().num_elements() == 1:
-        let n = v.shape()[0]
         var result = Tensor[type](n, n)
         memset_zero(result.data(), n * n)
         for i in range(n):
             result[Index(i, i)] = v[i]
         return result
-    elif v.shape().num_elements() == 2:
-        let n = v.shape()[0]
-        var result = Tensor[type](n)
-        for i in range(n):
-            result[i] = v[i, i]
-            return result
+    var result = Tensor[type](n)
+    for i in range(n):
+        result[i] = v[i, i]
+    return result
 
 
-@value
-struct SVD[type: DType]:
-    var U: Tensor[type]
-    var s: Tensor[type]
-    var V: Tensor[type]
+# @value
+# struct SVD[type: DType]:
+#     var U: Tensor[type]
+#     var s: Tensor[type]
+#     var V: Tensor[type]
 
 
 # fn svd_factor[type: DType](A: Tensor[type]) -> SVD[type]:
@@ -689,38 +816,38 @@ struct SVD[type: DType]:
 #     return result
 
 
-fn dlt[type: DType](x: Tensor[type], x_prime: Tensor[type]) -> Tensor[type]:
-    let num_correspondences = x.shape()[0]
+# fn dlt[type: DType](x: Tensor[type], x_prime: Tensor[type]) -> Tensor[type]:
+#     let num_correspondences = x.shape()[0]
 
-    var A = Tensor[type](2 * num_correspondences, 9)
-    for i in range(num_correspondences):
-        let x_prime_x = multiply(x_prime[i, 0], x)
-        let y_prime_x = multiply(x_prime[i, 1], x)
-        let w_prime_x = multiply(x_prime[i, 2], x)
+#     var A = Tensor[type](2 * num_correspondences, 9)
+#     for i in range(num_correspondences):
+#         let x_prime_x = multiply(x_prime[i, 0], x)
+#         let y_prime_x = multiply(x_prime[i, 1], x)
+#         let w_prime_x = multiply(x_prime[i, 2], x)
 
-        let i2 = 2 * i
-        A[Index(i2, 0)] = 0
-        A[Index(i2, 1)] = 0
-        A[Index(i2, 2)] = 0
-        A[Index(i2, 3)] = -w_prime_x[0]
-        A[Index(i2, 4)] = -w_prime_x[1]
-        A[Index(i2, 5)] = -w_prime_x[2]
-        A[Index(i2, 6)] = y_prime_x[0]
-        A[Index(i2, 7)] = y_prime_x[1]
-        A[Index(i2, 8)] = y_prime_x[2]
+#         let i2 = 2 * i
+#         A[Index(i2, 0)] = 0
+#         A[Index(i2, 1)] = 0
+#         A[Index(i2, 2)] = 0
+#         A[Index(i2, 3)] = -w_prime_x[0]
+#         A[Index(i2, 4)] = -w_prime_x[1]
+#         A[Index(i2, 5)] = -w_prime_x[2]
+#         A[Index(i2, 6)] = y_prime_x[0]
+#         A[Index(i2, 7)] = y_prime_x[1]
+#         A[Index(i2, 8)] = y_prime_x[2]
 
-        let i2p1 = i2 + 1
-        A[Index(i2p1, 0)] = w_prime_x[0]
-        A[Index(i2p1, 1)] = w_prime_x[1]
-        A[Index(i2p1, 2)] = w_prime_x[2]
-        A[Index(i2p1, 3)] = 0
-        A[Index(i2p1, 4)] = 0
-        A[Index(i2p1, 5)] = 0
-        A[Index(i2p1, 6)] = -x_prime_x[0]
-        A[Index(i2p1, 7)] = -x_prime_x[1]
-        A[Index(i2p1, 8)] = -x_prime_x[2]
+#         let i2p1 = i2 + 1
+#         A[Index(i2p1, 0)] = w_prime_x[0]
+#         A[Index(i2p1, 1)] = w_prime_x[1]
+#         A[Index(i2p1, 2)] = w_prime_x[2]
+#         A[Index(i2p1, 3)] = 0
+#         A[Index(i2p1, 4)] = 0
+#         A[Index(i2p1, 5)] = 0
+#         A[Index(i2p1, 6)] = -x_prime_x[0]
+#         A[Index(i2p1, 7)] = -x_prime_x[1]
+#         A[Index(i2p1, 8)] = -x_prime_x[2]
 
-    # let svd = compute_svd(A)
+# let svd = compute_svd(A)
 
 
 alias Vector2d = SIMD[DType.float64, 2]
