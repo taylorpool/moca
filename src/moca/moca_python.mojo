@@ -2,6 +2,7 @@ from utils.index import Index
 
 from python import Python
 
+
 # ------------------------- Conversions ------------------------- #
 fn np2simd[
     n: Int, type: DType = DType.float64
@@ -99,6 +100,7 @@ fn np2tensor2d_f64(npin: PythonObject) -> Tensor[DType.float64]:
         print("Failed in new")
         return Tensor[DType.float64]()
 
+
 fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
     try:
         let np = Python.import_module("numpy")
@@ -106,7 +108,7 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
         let rows = A.shape()[0]
         let cols = A.shape()[1]
 
-    let A_np = np.empty((rows, cols), dtype=np.float64)
+        let A_np = np.empty((rows, cols), np.float64)
 
         let in_pointer = Pointer(
             __mlir_op.`pop.index_to_pointer`[
@@ -132,7 +134,8 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
         return A_np
     except:
         print("Failed in new")
-        return Tensor[A.dtype]()
+        return PythonObject()
+
 
 @value
 struct SVDResult[type: DType = DType.float64]:
@@ -140,13 +143,19 @@ struct SVDResult[type: DType = DType.float64]:
     var s: Tensor[type]
     var vh: Tensor[type]
 
+
 fn svd(A: Tensor[DType.float64]) -> SVDResult:
     try:
-    let A_np = tensor2np2d(A)
-    let np = Python.import_module("numpy")
-    let result_np = np.linalg.svd(A_np)
-    var result = SVDResult(np2tensor2d_f64(result_np.U), np2tensor2d_f64(result_np.S), np2tensor2d_f64(result_np.Vh))
-    return result
+        let A_np = tensor2np2d(A)
+        let np = Python.import_module("numpy")
+        let result_np = np.linalg.svd(A_np)
+        var result = SVDResult(
+            np2tensor2d_f64(result_np.U),
+            np2tensor2d_f64(result_np.S),
+            np2tensor2d_f64(result_np.Vh),
+        )
+        return result
     except:
-    print("Failed in SVD")
-    return Tensor[A.dtype]()
+        print("Failed in SVD")
+        let t = Tensor[DType.float64]()
+        return SVDResult(t, t, t)
