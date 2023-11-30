@@ -421,6 +421,33 @@ fn forward_substitution_solve_permuted[
     return x
 
 
+fn copy_row[type: DType](A: Tensor[type], row: Int, start_col: Int = 0) -> Tensor[type]:
+    let x = Tensor[type](A.shape()[1] - start_col)
+    var ptr = x.data()
+    for j in range(start_col, A.shape()[1]):
+        ptr.simd_store(A[row, j])
+        ptr += 1
+    return x
+
+
+fn copy_col[type: DType](A: Tensor[type], col: Int, start_row: Int = 0) -> Tensor[type]:
+    let x = Tensor[type](A.shape()[0] - start_row)
+    var ptr = x.data()
+    for i in range(start_row, A.shape()[0]):
+        ptr.simd_store(A[i, col])
+        ptr += 1
+    return x
+
+
+fn transpose[type: DType](A: Tensor[type]) -> Tensor[type]:
+    var At = Tensor[A.dtype](A.shape()[1], A.shape()[0])
+    for i in range(At.shape()[0]):
+        for j in range(At.shape()[1]):
+            At[Index(i, j)] = A[j, i]
+
+    return At
+
+
 @value
 struct LU[type: DType]:
     var row_order: Tensor[DType.int64]
@@ -685,8 +712,31 @@ fn qr_iteration[type: DType](A0: Tensor[type], max_iters: Int = 100):
         A = mat_vec(qr.R, qr.Q)
 
 
-fn solve_homogeneous_equation[type: DType](A: Tensor[type]) -> Tensor[type]:
-    return A
+fn qr_from_hessenberg[type: DType](H: Tensor[type]) -> QR[type]:
+    let m = H.shape()[0]
+    let n = H.shape()[1]
+    var qr = QR(arange(H.shape()[0]), eye[type](m), H)
+    for j in range(math.min(n, m)):
+        let i = j + 1
+        let im1 = i - 1
+        let a = qr.R[im1, j]
+        let b = qr.R[i, j]
+        var G = Tensor[type](2, 2)
+        let ab_norm = math.sqrt(a**2 + b**2)
+        G[Index(0, 0)] = a / ab_norm
+        G[Index(0, 1)] = b / ab_norm
+        G[Index(1, 0)] = -G[0, 1]
+        G[Index(1, 1)] = G[0, 0]
+        for k in range(i - 1, i + 2):
+            for r in range(j, qr.R.shape()[1]):
+                qr.R[Index(k, r)] = G[k, 0] * qr.R[0, r] + G[k, 1] * qr.R[1, r]
+        for k in range(i - 1, i + 2):
+            for r in range(i + 2):
+                qr.Q[Index(k, r)] = G[k, 0] * qr.Q[0, r] + G[k, 1] * qr.Q[1, r]
+
+    qr.Q = transpose(qr.Q)
+
+    return qr
 
 
 fn solve_homogeneous_equation[

@@ -103,10 +103,10 @@ fn triangulate(
                 A[Index(i + 2, j)] = tens2[Index(i, j)]
 
         # TODO: SVD here
-        let p = mc.solve_homogeneous_equation(A)
+        # let p = mc.solve_homogeneous_equation(A)
 
-        let p3d = mc.Vector3d(p[0], p[1], p[2], 0)
-        out.push_back(Landmark(p3d))
+        # let p3d = mc.Vector3d(p[0], p[1], p[2], 0)
+        # out.push_back(Landmark(p3d))
 
     return out
 
