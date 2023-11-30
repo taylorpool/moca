@@ -72,9 +72,9 @@ def test_triangulate() -> NoneType:
     kp2_tens = Tensor[DType.float64](2, 1)
     kp2_tens.simd_store(0, kp2)
 
-    # p_est = cv.triangulate(K, T1, kp1_tens, K, T2, kp2_tens)
+    p_est = cv.triangulate(K, T1, kp1_tens, K, T2, kp2_tens)
 
-    # assert_almost_equal(p, p_est[0].val)
+    assert_almost_equal(p, p_est[0].val)
 
 
 def test_PnP() -> NoneType:

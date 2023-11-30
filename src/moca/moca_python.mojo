@@ -146,16 +146,16 @@ struct SVDResult[type: DType = DType.float64]:
 
 fn svd(A: Tensor[DType.float64]) -> SVDResult:
     try:
-        let A_np = tensor2np2d(A)
         let np = Python.import_module("numpy")
+        let A_np = tensor2np2d(A)
         let result_np = np.linalg.svd(A_np)
-        var result = SVDResult(
+        let result = SVDResult(
             np2tensor2d_f64(result_np.U),
-            np2tensor2d_f64(result_np.S),
+            np2tensor[DType.float64](result_np.S),
             np2tensor2d_f64(result_np.Vh),
         )
         return result
     except:
         print("Failed in SVD")
-        let t = Tensor[DType.float64]()
+        let t = Tensor[DType.float64](10, 10)
         return SVDResult(t, t, t)

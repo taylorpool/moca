@@ -90,9 +90,11 @@ fn triangulate(
     # TODO Cheriality check?
 
     var out = DynamicVector[Landmark](pts1.dim(0))
-    for i in range(pts1.dim(0)):
-        let p1 = mc.get_row[DType.float64, 4](pts1, i)
-        let p2 = mc.get_row[DType.float64, 4](pts2, i)
+    for i in range(pts1.dim(1)):
+        var p1 = mc.get_row[DType.float64, 4](pts1, i)
+        var p2 = mc.get_row[DType.float64, 4](pts2, i)
+        p1[2] = 1
+        p2[2] = 1
         let tens1 = mc.mat_mat(SO3.skew(p1), (K1 * T1))
         let tens2 = mc.mat_mat(SO3.skew(p2), (K2 * T2))
 
@@ -101,13 +103,12 @@ fn triangulate(
         for i in range(2):
             for j in range(4):
                 A[Index(i, j)] = tens1[Index(i, j)]
-                A[Index(i + 2, j)] = tens2[Index(i, j)]
+                A[Index(i + 1, j)] = tens2[Index(i, j)]
 
-        # TODO: SVD here
-        # let p = mc.solve_homogeneous_equation(A)
-
-        # let p3d = mc.Vector3d(p[0], p[1], p[2], 0)
-        # out.push_back(Landmark(p3d))
+        let svd = mc.svd(A)
+        let z = svd.vh[3, 3]
+        let p3d = mc.Vector3d(svd.vh[3, 0] / z, svd.vh[3, 1] / z, svd.vh[3, 2] / z, 0)
+        out.push_back(Landmark(p3d))
 
     return out
 
