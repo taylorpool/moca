@@ -133,11 +133,7 @@ fn test_divide2() raises:
     let x = mc.arange[DType.float64](3)
     let y: SIMD[x.dtype, 1] = 4.0
     let z = mc.divide(x, y)
-    let y: SIMD[x.dtype, 1] = 4.0
-    let z = mc.divide(x, y)
     for i in range(z.shape()[0]):
-        _ = assert_almost_equal(z[i], x[i] / y)
-
         _ = assert_almost_equal(z[i], x[i] / y)
 
 
