@@ -99,7 +99,7 @@ fn triangulate(
     # TODO Cheriality check?
 
     var out = DynamicVector[Landmark](pts1.dim(0))
-    for i in range(pts1.dim(1)):
+    for i in range(pts1.dim(0)):
         var p1 = mc.get_row[DType.float64, 4](pts1, i)
         var p2 = mc.get_row[DType.float64, 4](pts2, i)
         p1[2] = 1
@@ -167,11 +167,62 @@ fn findEssentialMat(
     K2: PinholeCamera,
 ) -> Tensor[DType.float64]:
     let F = findFundamentalMat(kp1, kp2)
-    let E = mc.mat_mat(mc.matT_mat(K2.as_mat(), F), K1.as_mat())
+    let E = mc.mat_mat(mc.matT_mat(K2.as_mat(True), F), K1.as_mat(True))
     return E
 
 
+fn decomposeEssentialMat(E: Tensor[DType.float64]) -> Tuple[SO3, SO3, mc.Vector3d]:
+    let svd = mc.svd(E)
+    let u = svd.u
+    let vh = svd.vh
+
+    var w = Tensor[DType.float64](3, 3)
+    w[Index(0, 1)] = -1
+    w[Index(1, 0)] = 1
+    w[Index(2, 2)] = 1
+
+    let R1 = mc.mat_mat(mc.mat_matT(u, w), vh)
+    let R2 = mc.mat_mat(mc.mat_mat(u, w), vh)
+    let t = mc.Vector3d(u[0, 2], u[1, 2], u[2, 2], 0)
+
+    return SO3(R1), SO3(R2), t
+
+
 fn recoverPose(
-    E: Tensor[DType.float64], kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]
+    E: Tensor[DType.float64],
+    kp1: Tensor[DType.float64],
+    kp2: Tensor[DType.float64],
+    K1: PinholeCamera,
+    K2: PinholeCamera,
 ) -> SE3:
-    return SE3.identity()
+    let tuple = decomposeEssentialMat(E)
+    let R1 = tuple.get[0, SO3]()
+    let R2 = tuple.get[1, SO3]()
+    let t = tuple.get[2, mc.Vector3d]()
+
+    let T1 = SE3.identity()
+
+    var options = InlinedFixedVector[SE3, 4](0)
+    options.append(SE3(R1, t))
+    options.append(SE3(R1, -t))
+    options.append(SE3(R2, t))
+    options.append(SE3(R2, -t))
+
+    let num_points = kp1.dim(0)
+    var best_in_front = 0
+    var best_option = SE3.identity()
+
+    for T2 in options:
+        var num_in_front = 0
+        let pts3d = triangulate(K1, T1, kp1, K2, T2, kp2)
+        for i in range(num_points):
+            let p = pts3d[i]
+
+            if p.val[2] > 0:
+                num_in_front += 1
+
+        if num_in_front > best_in_front:
+            best_in_front = num_in_front
+            best_option = T2
+
+    return best_option

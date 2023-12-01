@@ -46,6 +46,7 @@ class SfMData:
     cameras: list[PinholeCamera]
     factors: list[ProjectionFactor]
     pair_indices: np.ndarray
+    pairs: np.ndarray
 
 
 # Helper to make sure things are straight when running
@@ -129,12 +130,14 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     ] = dict()  # holds tuples of (img_id, kp) -> factor_idx
     lm_lookup: dict[int, list[int]] = dict()  # holds lm_id -> [factor_idx, ...]
     pair_factor_list = []
+    pairs = []
     factors: list[ProjectionFactor] = []
 
     idx_lm_count = 0
     idx_lm_removed: list[int] = []
     for match in tqdm(matches, leave=False):
         factor_idx_list = []
+        pairs.append((match.id1, match.id2))
         for idx_kp1, idx_kp2 in match.matches:
             tuple1 = (match.id1, idx_kp1)
             tuple2 = (match.id2, idx_kp2)
@@ -223,6 +226,7 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
         cameras,
         factors,
         pad_to_dense(pair_factor_list, -1),
+        np.array(pairs),
     )
 
 

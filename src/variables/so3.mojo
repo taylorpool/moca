@@ -68,7 +68,7 @@ struct SO3:
                 quat[2] = 0.25 * s
                 quat[3] = (mat[Index(1, 0)] - mat[Index(0, 1)]) / s
 
-        return Self(quat)
+        return Self(quat, True)
 
     @always_inline
     @staticmethod

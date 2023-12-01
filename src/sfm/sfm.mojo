@@ -147,9 +147,9 @@ struct SfM:
 
         # Setup SceneGraph tracker
         var id_pairs = TupleIntDict()
-        let indices_pair = util.np2tensor2d_i64(sfm_data.pair_indices)
+        let indices_pair = mc.np2tensor2d_i64(sfm_data.pair_indices)
 
-        let pairs = util.np2tensor2d_i64(sfm_data.pairs)
+        let pairs = mc.np2tensor2d_i64(sfm_data.pairs)
         for i in range(pairs.dim(0)):
             let id1 = pairs[Index(i, 0)].__int__()
             let id2 = pairs[Index(i, 1)].__int__()
@@ -184,7 +184,9 @@ struct SfM:
             kp1, kp2, self.cameras[cam1_id], self.cameras[cam2_id]
         )
         let pose1 = SE3.identity()
-        let pose2 = cv.recoverPose(E, kp1, kp2)
+        let pose2 = cv.recoverPose(
+            E, kp1, kp2, self.cameras[cam1_id], self.cameras[cam2_id]
+        )
         let lms = cv.triangulate(
             self.cameras[cam1_id], pose1, kp1, self.cameras[cam2_id], pose2, kp2
         )
