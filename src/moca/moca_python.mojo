@@ -95,6 +95,9 @@ fn np2tensor2d_f64(npin: PythonObject) -> Tensor[DType.float64]:
                 let index = row * cols + col
                 out_pointer.store(index, in_pointer[index])
 
+        if npin.dtype != np.float64:
+            raise Error("np2tensor2d_f64: input is not float64")
+
         return image
     except:
         print("Failed in new")
@@ -130,6 +133,9 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
             for col in range(cols):
                 let index = row * cols + col
                 out_pointer.store(index, in_pointer[index])
+
+        if A_np.dtype != np.float64:
+            raise Error("tensor2np2d: input is not float64")
 
         return A_np
     except:

@@ -20,47 +20,47 @@ from memory import memset_zero
 fn PnP(
     pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
 ) -> Tensor[DType.float64]:
-    let n = pts3d.dim(1)
+    let n = pts3d.dim(0)
 
     # build action matrix
     var A = Tensor[DType.float64](n * 2, 12)
     for i in range(n):
-        A[Index(2 * i, 0)] = pts3d[i, 0]
-        A[Index(2 * i, 1)] = pts3d[i, 1]
-        A[Index(2 * i, 2)] = pts3d[i, 2]
-        A[Index(2 * i, 3)] = 1.0
+        A[Index(2 * i, 4)] = -pts3d[i, 0]
+        A[Index(2 * i, 5)] = -pts3d[i, 1]
+        A[Index(2 * i, 6)] = -pts3d[i, 2]
+        A[Index(2 * i, 7)] = -1.0
 
-        A[Index(2 * i, 8)] = -pts2d[i, 0] * pts3d[i, 0]
-        A[Index(2 * i, 9)] = -pts2d[i, 0] * pts3d[i, 1]
-        A[Index(2 * i, 10)] = -pts2d[i, 0] * pts3d[i, 2]
-        A[Index(2 * i, 11)] = -pts2d[i, 0]
+        A[Index(2 * i, 8)] = pts2d[i, 1] * pts3d[i, 0]
+        A[Index(2 * i, 9)] = pts2d[i, 1] * pts3d[i, 1]
+        A[Index(2 * i, 10)] = pts2d[i, 1] * pts3d[i, 2]
+        A[Index(2 * i, 11)] = pts2d[i, 1]
 
-        A[Index(2 * i + 1, 4)] = pts3d[i, 0]
-        A[Index(2 * i + 1, 5)] = pts3d[i, 1]
-        A[Index(2 * i + 1, 6)] = pts3d[i, 2]
-        A[Index(2 * i + 1, 7)] = 1.0
+        A[Index(2 * i + 1, 0)] = pts3d[i, 0]
+        A[Index(2 * i + 1, 1)] = pts3d[i, 1]
+        A[Index(2 * i + 1, 2)] = pts3d[i, 2]
+        A[Index(2 * i + 1, 3)] = 1.0
 
-        A[Index(2 * i + 1, 8)] = -pts2d[i, 1] * pts3d[i, 0]
-        A[Index(2 * i + 1, 9)] = -pts2d[i, 1] * pts3d[i, 1]
-        A[Index(2 * i + 1, 10)] = -pts2d[i, 1] * pts3d[i, 2]
-        A[Index(2 * i + 1, 11)] = -pts2d[i, 1]
+        A[Index(2 * i + 1, 8)] = -pts2d[i, 0] * pts3d[i, 0]
+        A[Index(2 * i + 1, 9)] = -pts2d[i, 0] * pts3d[i, 1]
+        A[Index(2 * i + 1, 10)] = -pts2d[i, 0] * pts3d[i, 2]
+        A[Index(2 * i + 1, 11)] = -pts2d[i, 0]
 
     # Solve P
-    # var p = mc.svd(A)
-    var p = Tensor[DType.float64](12)
+    let svd = mc.svd(A)
+    let z = svd.vh[11, 11]
     var P = Tensor[DType.float64](3, 4)
-    P[Index(0, 0)] = p[0]
-    P[Index(0, 1)] = p[1]
-    P[Index(0, 2)] = p[2]
-    P[Index(0, 3)] = p[3]
-    P[Index(1, 0)] = p[4]
-    P[Index(1, 1)] = p[5]
-    P[Index(1, 2)] = p[6]
-    P[Index(1, 3)] = p[7]
-    P[Index(2, 0)] = p[8]
-    P[Index(2, 1)] = p[9]
-    P[Index(2, 2)] = p[10]
-    P[Index(2, 3)] = p[11]
+    P[Index(0, 0)] = svd.vh[11, 0] / z
+    P[Index(0, 1)] = svd.vh[11, 1] / z
+    P[Index(0, 2)] = svd.vh[11, 2] / z
+    P[Index(0, 3)] = svd.vh[11, 3] / z
+    P[Index(1, 0)] = svd.vh[11, 4] / z
+    P[Index(1, 1)] = svd.vh[11, 5] / z
+    P[Index(1, 2)] = svd.vh[11, 6] / z
+    P[Index(1, 3)] = svd.vh[11, 7] / z
+    P[Index(2, 0)] = svd.vh[11, 8] / z
+    P[Index(2, 1)] = svd.vh[11, 9] / z
+    P[Index(2, 2)] = svd.vh[11, 10] / z
+    P[Index(2, 3)] = svd.vh[11, 11] / z
 
     return P
 
@@ -68,10 +68,19 @@ fn PnP(
 fn PnP(
     K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
 ) -> SE3:
-    var P = PnP(pts2d, pts3d)
-    var Rt = mc.mat_mat(mc.inv3(K.as_mat(True)), P)
-    # TODO: Orthogonalize R to make sure it's a rotation matrix
-    return SE3(SO3(Rt), mc.Vector3d(Rt[0, 3], Rt[1, 3], Rt[2, 3], 0))
+    # Get projection matrix
+    let P = PnP(pts2d, pts3d)
+    let Rt = mc.mat_mat(mc.inv3(K.as_mat(True)), P)
+
+    # Orthogonalize R to make sure it's a rotation matrix
+    var R = Tensor[DType.float64](3, 3)
+    for i in range(3):
+        for j in range(3):
+            R[Index(i, j)] = Rt[Index(i, j)]
+    let svd = mc.svd(R)
+    R = mc.mat_mat(svd.u, svd.vh)
+
+    return SE3(SO3(R), mc.Vector3d(Rt[0, 3], Rt[1, 3], Rt[2, 3], 0))
 
 
 fn triangulate(

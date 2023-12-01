@@ -100,12 +100,13 @@ def test_triangulate() -> NoneType:
 
 def test_PnP() -> NoneType:
     print("# cv PnP")
-    ps = Tensor[DType.float64](15, 3)
-    random.randn(ps.data(), 45, 0, 1)
+    n = 45
+    ps = Tensor[DType.float64](n, 3)
+    random.randn(ps.data(), n * 3, 0, 1)
     K = PinholeCamera(8, 6, 4, 3)
-    T = SE3(SO3.identity(), mc.Vector3d(0, 0, 1))
+    T = SE3(SO3.expmap(mc.Vector3d(0.05, 0.05, 0.05)), mc.Vector3d(0, 0, 1))
 
-    kps = Tensor[DType.float64](15, 2)
+    kps = Tensor[DType.float64](n, 2)
     for i in range(ps.dim(0)):
         p = mc.Vector3d(ps[i, 0], ps[i, 1], ps[i, 2])
         kp = K.project(T * p)
@@ -114,7 +115,8 @@ def test_PnP() -> NoneType:
 
     T_est = cv.PnP(K, kps, ps)
 
-    # assert_almost_equal_tensor[DType.float64, 16](T_est.as_mat(), T.as_mat())
+    assert_almost_equal(T.rot.quat, T_est.rot.quat, atol=1e-3, rtol=1e-5)
+    assert_almost_equal(T.trans, T_est.trans)
 
 
 # # Run the test

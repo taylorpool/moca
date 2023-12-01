@@ -142,9 +142,18 @@ fn assert_true(cond: Bool, message: String) raises:
 
 fn assert_almost_equal[
     type: DType, size: Int
-](lhs: SIMD[type, size], rhs: SIMD[type, size]) raises:
-    if not testing.assert_almost_equal[type, size](lhs, rhs):
-        raise Error()
+](
+    lhs: SIMD[type, size],
+    rhs: SIMD[type, size],
+    atol: SIMD[type, 1] = 0,
+    rtol: SIMD[type, 1] = 0,
+) raises:
+    if atol != 0 or rtol != 0:
+        if not testing.assert_almost_equal[type, size](lhs, rhs, atol, rtol):
+            raise Error()
+    else:
+        if not testing.assert_almost_equal[type, size](lhs, rhs):
+            raise Error()
 
 
 fn assert_almost_equal_tensor[
