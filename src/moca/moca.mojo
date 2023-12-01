@@ -263,6 +263,18 @@ fn mat_vec[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
 
     return result
 
+fn mat_vec[
+    type: DType, dim: Int
+](mat: Tensor[type], vec: SIMD[type, dim]) -> SIMD[type, dim]:
+    let m = mat.shape()[0]
+    let n = mat.shape()[1]
+    var result = SIMD[type, dim](0)
+    for i in range(m):
+        for j in range(n):
+            result[i] += mat[i, j] * vec[j]
+
+    return result
+
 
 fn matT_vec[type: DType](mat: Tensor[type], vec: Tensor[type]) -> Tensor[type]:
     let m = mat.shape()[1]

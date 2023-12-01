@@ -4,7 +4,12 @@ import random
 
 import src.sfm.cv as cv
 import src.moca as mc
-from src.util import np2tensor2d_f64, assert_almost_equal_tensor, assert_almost_equal
+from src.util import (
+    np2tensor2d_f64,
+    assert_almost_equal_tensor,
+    assert_almost_equal,
+    assert_true,
+)
 from src.variables import PinholeCamera, SE3, SO3
 import src.sfm.cv_util as cv_util
 
@@ -13,7 +18,6 @@ from src.moca.test_moca import test_matT_matT
 
 def test_findFundamentalMat() -> NoneType:
     print("# cv fundamental")
-    cvpy = Python.import_module("cv2")
     np = Python.import_module("numpy")
 
     # Define test data
@@ -24,10 +28,6 @@ def test_findFundamentalMat() -> NoneType:
     kp1 = np2tensor2d_f64(kp1py)
     kp2 = np2tensor2d_f64(kp2py)
 
-    # Get actual one
-    F_des_py = cvpy.findFundamentalMat(kp2py, kp1py, cvpy.FM_8POINT)[0]
-    F_des = np2tensor2d_f64(F_des_py)
-
     # Get mine
     F_mine = cv.findFundamentalMat(kp1, kp2)
 
@@ -36,6 +36,13 @@ def test_findFundamentalMat() -> NoneType:
         let k2 = mc.Vector3d(kp2[i, 0], kp2[i, 1], 1)
         let out = mc.vecT_mat_vec(k2, F_mine, k1)
         assert_almost_equal[DType.float64](0, out)
+
+    all_zero = True
+    for i in range(3):
+        for j in range(3):
+            all_zero = all_zero and F_mine[i, j] == 0
+
+    assert_true(not all_zero, "All of fundamental matrix was zero!")
 
 
 def test_findEssentialMat() -> NoneType:
@@ -46,20 +53,29 @@ def test_findEssentialMat() -> NoneType:
     # Define test data
     kp1py = np.random.rand(8, 2)
     kp2py = kp1py + 5
-    Kpy = np.eye(3)
 
     kp1 = np2tensor2d_f64(kp1py)
     kp2 = np2tensor2d_f64(kp2py)
-    K = PinholeCamera(1, 1, 0, 0)
-
-    # Get actual one
-    E_des_py = cvpy.findEssentialMat(kp1py, kp2py, Kpy)[0]
-    E_des = np2tensor2d_f64(E_des_py)
+    K = PinholeCamera(8, 6, 4, 3)
 
     # Get mine
-    # E_mine = cv.findEssentialMat(kp1, kp2, K, K)
+    E_mine = cv.findEssentialMat(kp1, kp2, K, K)
 
-    # assert_almost_equal_tensor[DType.float64, 16](E_des, E_mine)
+    let Kinv = mc.inv3(K.as_mat())
+    for i in range(8):
+        var k1 = mc.Vector3d(kp1[i, 0], kp1[i, 1], 1)
+        k1 = mc.mat_vec(Kinv, k1)
+        var k2 = mc.Vector3d(kp2[i, 0], kp2[i, 1], 1)
+        k2 = mc.mat_vec(Kinv, k2)
+        let out = mc.vecT_mat_vec(k2, E_mine, k1)
+        assert_almost_equal[DType.float64](0, out)
+
+    all_zero = True
+    for i in range(3):
+        for j in range(3):
+            all_zero = all_zero and E_mine[i, j] == 0
+
+    assert_true(not all_zero, "All of fundamental matrix was zero!")
 
 
 def test_triangulate() -> NoneType:

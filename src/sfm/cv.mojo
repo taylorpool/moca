@@ -157,8 +157,6 @@ fn findEssentialMat(
     K1: PinholeCamera,
     K2: PinholeCamera,
 ) -> Tensor[DType.float64]:
-    let num_correspondences = kp1.shape()[0]
-    var A = Tensor[DType.float64](num_correspondences, 9)
     let F = findFundamentalMat(kp1, kp2)
     let E = mc.mat_mat(mc.matT_mat(K2.as_mat(), F), K1.as_mat())
     return E
