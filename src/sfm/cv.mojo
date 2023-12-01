@@ -129,21 +129,24 @@ fn findFundamentalMat(
         A[Index(i, 7)] = kp1[i, 1]
         A[Index(i, 8)] = 1.0
 
-    var f0 = Tensor[DType.float64](A.shape()[1])
-    memset_zero(f0.data(), f0.num_elements())
-    f0[0] = 1.0
-    let f = mc.solve_homogeneous_equation(A, f0)
+    let svd = mc.svd(A)
+    # print(A)
 
     var F = Tensor[DType.float64](3, 3)
-    F[Index(0, 0)] = f[0]
-    F[Index(0, 1)] = f[1]
-    F[Index(0, 2)] = f[2]
-    F[Index(1, 0)] = f[3]
-    F[Index(1, 1)] = f[4]
-    F[Index(1, 2)] = f[5]
-    F[Index(2, 0)] = f[6]
-    F[Index(2, 1)] = f[7]
-    F[Index(2, 2)] = f[8]
+    let z = svd.vh[8, 8]
+    F[Index(0, 0)] = svd.vh[8, 0] / z
+    F[Index(0, 1)] = svd.vh[8, 1] / z
+    F[Index(0, 2)] = svd.vh[8, 2] / z
+    F[Index(1, 0)] = svd.vh[8, 3] / z
+    F[Index(1, 1)] = svd.vh[8, 4] / z
+    F[Index(1, 2)] = svd.vh[8, 5] / z
+    F[Index(2, 0)] = svd.vh[8, 6] / z
+    F[Index(2, 1)] = svd.vh[8, 7] / z
+    F[Index(2, 2)] = 1
+
+    # var svd2 = mc.svd(F)
+    # svd2.s[2] = 0
+    # F = mc.mat_mat(mc.mat_mat(svd2.u, mc.diag(svd2.s)), svd2.vh)
 
     return F
 

@@ -17,20 +17,25 @@ def test_findFundamentalMat() -> NoneType:
     np = Python.import_module("numpy")
 
     # Define test data
-    kp1py = np.random.rand(8, 2)
-    kp2py = kp1py + 5
+    np.random.seed(0)
+    kp1py = np.random.rand(8, 2) * 5
+    kp2py = kp1py + 15
 
     kp1 = np2tensor2d_f64(kp1py)
     kp2 = np2tensor2d_f64(kp2py)
 
     # Get actual one
-    F_des_py = cvpy.findFundamentalMat(kp1py, kp2py, cvpy.FM_8POINT)[0]
+    F_des_py = cvpy.findFundamentalMat(kp2py, kp1py, cvpy.FM_8POINT)[0]
     F_des = np2tensor2d_f64(F_des_py)
 
     # Get mine
-    # F_mine = cv.findFundamentalMat(kp1, kp2)
+    F_mine = cv.findFundamentalMat(kp1, kp2)
 
-    # assert_almost_equal_tensor[DType.float64, 16](F_des, F_mine)
+    for i in range(8):
+        let k1 = mc.Vector3d(kp1[i, 0], kp1[i, 1], 1)
+        let k2 = mc.Vector3d(kp2[i, 0], kp2[i, 1], 1)
+        let out = mc.vecT_mat_vec(k2, F_mine, k1)
+        assert_almost_equal[DType.float64](0, out)
 
 
 def test_findEssentialMat() -> NoneType:

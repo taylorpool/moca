@@ -321,6 +321,22 @@ fn vecT_mat_vec[
 
     return result
 
+fn vecT_mat_vec[
+    type: DType, dim: Int
+](x: SIMD[type, dim], A: Tensor[type], y: SIMD[type, dim]) -> SIMD[type, 1]:
+    let m = A.shape()[0]
+    let n = A.shape()[1]
+
+    var result = SIMD[type, 1](0)
+
+    for i in range(m):
+        var elem = SIMD[type, 1](0)
+        for j in range(n):
+            elem += A[i, j] * y[j]
+        result += x[i] * elem
+
+    return result
+
 
 fn inv3[type:DType](matrix: Tensor[type]) -> Tensor[type]:
     var result = Tensor[type](3, 3)
