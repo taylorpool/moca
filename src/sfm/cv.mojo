@@ -4,7 +4,7 @@ import src.moca as mc
 
 from utils.index import Index
 from memory import memset_zero
-
+import math
 
 # fn RANSAC[
 #     error: fn () -> Int32
@@ -24,6 +24,7 @@ fn PnP(
 
     # build action matrix
     var A = Tensor[DType.float64](n * 2, 12)
+    memset_zero(A.data(), A.num_elements())
     for i in range(n):
         A[Index(2 * i, 4)] = -pts3d[i, 0]
         A[Index(2 * i, 5)] = -pts3d[i, 1]
@@ -47,20 +48,20 @@ fn PnP(
 
     # Solve P
     let svd = mc.svd(A)
-    let z = svd.vh[11, 11]
+
     var P = Tensor[DType.float64](3, 4)
-    P[Index(0, 0)] = svd.vh[11, 0] / z
-    P[Index(0, 1)] = svd.vh[11, 1] / z
-    P[Index(0, 2)] = svd.vh[11, 2] / z
-    P[Index(0, 3)] = svd.vh[11, 3] / z
-    P[Index(1, 0)] = svd.vh[11, 4] / z
-    P[Index(1, 1)] = svd.vh[11, 5] / z
-    P[Index(1, 2)] = svd.vh[11, 6] / z
-    P[Index(1, 3)] = svd.vh[11, 7] / z
-    P[Index(2, 0)] = svd.vh[11, 8] / z
-    P[Index(2, 1)] = svd.vh[11, 9] / z
-    P[Index(2, 2)] = svd.vh[11, 10] / z
-    P[Index(2, 3)] = svd.vh[11, 11] / z
+    P[Index(0, 0)] = svd.vh[11, 0]
+    P[Index(0, 1)] = svd.vh[11, 1]
+    P[Index(0, 2)] = svd.vh[11, 2]
+    P[Index(0, 3)] = svd.vh[11, 3]
+    P[Index(1, 0)] = svd.vh[11, 4]
+    P[Index(1, 1)] = svd.vh[11, 5]
+    P[Index(1, 2)] = svd.vh[11, 6]
+    P[Index(1, 3)] = svd.vh[11, 7]
+    P[Index(2, 0)] = svd.vh[11, 8]
+    P[Index(2, 1)] = svd.vh[11, 9]
+    P[Index(2, 2)] = svd.vh[11, 10]
+    P[Index(2, 3)] = svd.vh[11, 11]
 
     return P
 
@@ -80,7 +81,10 @@ fn PnP(
     let svd = mc.svd(R)
     R = mc.mat_mat(svd.u, svd.vh)
 
-    return SE3(SO3(R), mc.Vector3d(Rt[0, 3], Rt[1, 3], Rt[2, 3], 0))
+    var t = mc.Vector3d(Rt[0, 3], Rt[1, 3], Rt[2, 3], 0)
+    t /= math.sqrt((t * t).reduce_add())
+
+    return SE3(SO3(R), t)
 
 
 fn triangulate(
