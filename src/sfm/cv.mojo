@@ -181,9 +181,15 @@ fn decomposeEssentialMat(E: Tensor[DType.float64]) -> Tuple[SO3, SO3, mc.Vector3
     let vh = svd.vh
 
     var w = Tensor[DType.float64](3, 3)
-    w[Index(0, 1)] = -1
-    w[Index(1, 0)] = 1
-    w[Index(2, 2)] = 1
+
+    if mc.det3(vh) * mc.det3(u) > 0:
+        w[Index(0, 1)] = -1
+        w[Index(1, 0)] = 1
+        w[Index(2, 2)] = 1
+    else:
+        w[Index(0, 1)] = 1
+        w[Index(1, 0)] = -1
+        w[Index(2, 2)] = -1
 
     let R1 = mc.mat_mat(mc.mat_matT(u, w), vh)
     let R2 = mc.mat_mat(mc.mat_mat(u, w), vh)

@@ -1,6 +1,7 @@
 import numpy as np
 
 # ------------------------- Helpers ------------------------- #
+np.set_printoptions(suppress=True)
 
 
 def homogenize(x):
@@ -68,9 +69,9 @@ def findFundamentalMat(x1, x2):
     return F
 
 
-def findEssentialMat(x1, x2, K):
+def findEssentialMat(x1, x2, K1, K2):
     F = findFundamentalMat(x1, x2)
-    E = K.T @ F @ K
+    E = K1.T @ F @ K2
     return E
 
 
@@ -90,3 +91,60 @@ def triangulate(pt1s, pt2s, P1, P2):
         X[i] = V[-1, :3] / V[-1, -1]
 
     return X
+
+
+def decomposeEssentialMat(E):
+    u, s, vh = np.linalg.svd(E)
+
+    w = np.zeros((3, 3))
+    w[0, 1] = -1
+    w[1, 0] = 1
+    w[2, 2] = 1
+
+    if np.linalg.det(u) * np.linalg.det(vh) < 0:
+        w *= -1
+
+    R1 = u @ w.T @ vh
+    R2 = u @ w @ vh
+    t = u[:, -1]
+
+    return R1, R2, t
+
+
+def Rt2mat(R, t):
+    Rt = np.eye(4)
+    Rt[:3, :3] = R
+    Rt[:3, -1] = t
+    return Rt
+
+
+def recoverPose(
+    E,
+    kp1,
+    kp2,
+    K1,
+    K2,
+):
+    R1, R2, t = decomposeEssentialMat(E)
+    T1 = np.eye(4)
+
+    options = [Rt2mat(R1, t), Rt2mat(R1, -t), Rt2mat(R2, t), Rt2mat(R2, -t)]
+
+    num_points = kp1.shape[0]
+    best_in_front = 0
+    best_option = np.eye(4)
+
+    for T2 in options:
+        num_in_front = 0
+        pts3d = triangulate(kp1, kp2, K1 @ T1, K2 @ T2)
+        for i in range(num_points):
+            p = pts3d[i]
+
+            if p[2] > 0:
+                num_in_front += 1
+
+        if num_in_front > best_in_front:
+            best_in_front = num_in_front
+            best_option = T2
+
+    return best_option

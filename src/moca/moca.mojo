@@ -51,6 +51,14 @@ fn argmax(t: Tensor) -> Int:
 
 
 # ------------------------- MOCA ------------------------- #
+fn det3(matrix: Tensor[DType.float64]) -> SIMD[DType.float64, 1]:
+    var det : SIMD[DType.float64, 1] = 0.0
+
+    det += matrix[Index(0, 0)] * (matrix[Index(1, 1)] * matrix[Index(2, 2)] - matrix[Index(1, 2)] * matrix[Index(2, 1)])
+    det -= matrix[Index(0, 1)] * (matrix[Index(1, 0)] * matrix[Index(2, 2)] - matrix[Index(1, 2)] * matrix[Index(2, 0)])
+    det += matrix[Index(0, 2)] * (matrix[Index(1, 0)] * matrix[Index(2, 1)] - matrix[Index(1, 1)] * matrix[Index(2, 0)])
+
+    return det
 
 
 fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:

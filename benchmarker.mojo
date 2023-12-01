@@ -194,7 +194,8 @@ fn main() raises:
             let T = opencv.recoverPose(E, kp1py, kp2py, Ksmallpy, Ksmallpy)
 
         fn rp_cvpy() raises:
-            let f = cvpy.PnP(Ksmallpy, kp2py, ptspy)
+            let E = cvpy.findEssentialMat(kp1py, kp2py, Ksmallpy, Ksmallpy)
+            let T = cvpy.recoverPose(E, kp1py, kp2py, Kpy, Kpy)
 
         var t = MyBenchmarker(rp_mojo, rp_opencv, rp_cvpy)
         t.run()
