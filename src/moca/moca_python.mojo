@@ -1,5 +1,5 @@
 from utils.index import Index
-
+from memory import memcpy
 from python import Python
 
 
@@ -104,14 +104,15 @@ fn np2tensor2d_f64(npin: PythonObject) -> Tensor[DType.float64]:
         return Tensor[DType.float64]()
 
 
-fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
+fn tensor2np(A: Tensor[DType.float64]) -> PythonObject:
     try:
         let np = Python.import_module("numpy")
 
-        let rows = A.shape()[0]
-        let cols = A.shape()[1]
+        let shape = Python.evaluate("[]")
+        for i in range(A.rank()):
+            _ = shape.append(A.dim(i).__index__())
 
-        let A_np = np.empty((rows, cols), np.float64)
+        let A_np = np.empty(shape, np.float64)
 
         let in_pointer = Pointer(
             __mlir_op.`pop.index_to_pointer`[
@@ -129,13 +130,10 @@ fn tensor2np2d(A: Tensor[DType.float64]) -> PythonObject:
             )
         )
 
-        for row in range(rows):
-            for col in range(cols):
-                let index = row * cols + col
-                out_pointer.store(index, in_pointer[index])
+        memcpy(out_pointer, in_pointer, A.num_elements())
 
         if A_np.dtype != np.float64:
-            raise Error("tensor2np2d: input is not float64")
+            raise Error("tensor2np: input is not float64")
 
         return A_np
     except:
@@ -153,7 +151,7 @@ struct SVDResult[type: DType = DType.float64]:
 fn svd(A: Tensor[DType.float64]) -> SVDResult:
     try:
         let np = Python.import_module("numpy")
-        let A_np = tensor2np2d(A)
+        let A_np = tensor2np(A)
         let result_np = np.linalg.svd(A_np)
         let result = SVDResult(
             np2tensor2d_f64(result_np.U),

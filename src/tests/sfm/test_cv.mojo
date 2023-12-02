@@ -92,9 +92,9 @@ def test_triangulate() -> NoneType:
     kp1 = K.project(T1 * p)
     kp2 = K.project(T2 * p)
 
-    kp1_tens = Tensor[DType.float64](2, 1)
+    kp1_tens = Tensor[DType.float64](1, 2)
     kp1_tens.simd_store(0, kp1)
-    kp2_tens = Tensor[DType.float64](2, 1)
+    kp2_tens = Tensor[DType.float64](1, 2)
     kp2_tens.simd_store(0, kp2)
 
     p_est = cv.triangulate(K, T1, kp1_tens, K, T2, kp2_tens)
@@ -144,8 +144,8 @@ def test_decomposeEssential() -> NoneType:
         kp2[Index(i, 0)] = k2[0]
         kp2[Index(i, 1)] = k2[1]
 
-    kp1py = mc.tensor2np2d(kp1)
-    kp2py = mc.tensor2np2d(kp2)
+    kp1py = mc.tensor2np(kp1)
+    kp2py = mc.tensor2np(kp2)
 
     # Get mine
     E_mine = cv.findEssentialMat(kp1, kp2, K, K)
@@ -155,7 +155,7 @@ def test_decomposeEssential() -> NoneType:
     let r1_mine = mytuple.get[0, SO3]()
     let r2_mine = mytuple.get[1, SO3]()
 
-    let theirtuple = cvpy.decomposeEssentialMat(mc.tensor2np2d(E_mine))
+    let theirtuple = cvpy.decomposeEssentialMat(mc.tensor2np(E_mine))
     var t_des = mc.np2simd[4](theirtuple[2])
     t_des[3] = 0
     let r1_des = SO3(mc.np2tensor2d_f64(theirtuple[0]))

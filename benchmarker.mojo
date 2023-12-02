@@ -76,16 +76,17 @@ struct MyBenchmarker:
     fn print(self):
         print("Mojo: ", self.r_mojo.mean())
         print("OpenCV: ", self.r_opencv.mean())
-        print("CV.py: ", self.r_cvpy.mean())
+        print("Python: ", self.r_cvpy.mean())
 
 
 fn main() raises:
-    let run_eight = False
-    let run_triangulate = False
-    let run_pnp = False
+    let run_eight = True
+    let run_triangulate = True
+    let run_pnp = True
     let run_recoverpose = True
 
     # ------------------------- Load test data ------------------------- #
+    random.seed(0)
     let K = PinholeCamera(8, 6, 4, 3)
     let T1 = SE3.identity()
     let T2 = SE3(SO3.expmap(mc.Vector3d(0.01, 0.01, 0.01)), mc.Vector3d(1, 0, 0))
@@ -107,13 +108,13 @@ fn main() raises:
         kp2[Index(i, 0)] = k2[0]
         kp2[Index(i, 1)] = k2[1]
 
-    var ptspy = mc.tensor2np2d(pts)
-    var kp1py = mc.tensor2np2d(kp1)
-    var kp2py = mc.tensor2np2d(kp2)
-    var Kpy = mc.tensor2np2d(K.as_mat())
-    var Ksmallpy = mc.tensor2np2d(K.as_mat(True))
-    var T1py = mc.tensor2np2d(T1.as_mat())
-    var T2py = mc.tensor2np2d(T2.as_mat())
+    var ptspy = mc.tensor2np(pts)
+    var kp1py = mc.tensor2np(kp1)
+    var kp2py = mc.tensor2np(kp2)
+    var Kpy = mc.tensor2np(K.as_mat())
+    var Ksmallpy = mc.tensor2np(K.as_mat(True))
+    var T1py = mc.tensor2np(T1.as_mat())
+    var T2py = mc.tensor2np(T2.as_mat())
 
     # ------------------------- Start benchmarking ------------------------- #
     let np = Python.import_module("numpy")

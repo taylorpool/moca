@@ -2,6 +2,7 @@ from src.variables import PinholeCamera, SE3, Landmark, SO3
 import src.sfm.cv_util as cv_util
 import src.moca as mc
 
+from python import Python
 from utils.index import Index
 from memory import memset_zero
 import math
@@ -95,35 +96,44 @@ fn triangulate(
     T2: SE3,
     pts2: Tensor[DType.float64],
 ) -> DynamicVector[Landmark]:
-    debug_assert(
-        pts1.dim(0) == pts2.dim(0), "[TRIANGULATE] Got varying number of points"
-    )
-    debug_assert(pts1.dim(1) == 2, "[TRIANGULATE]  Too many columns")
-    debug_assert(pts2.dim(1) == 2, "[TRIANGULATE]  Too many columns")
-    # TODO Cheriality check?
+    let n = pts1.dim(0)
+    var out = DynamicVector[Landmark](n)
 
-    var out = DynamicVector[Landmark](pts1.dim(0))
-    for i in range(pts1.dim(0)):
-        var p1 = mc.get_row[DType.float64, 4](pts1, i)
-        var p2 = mc.get_row[DType.float64, 4](pts2, i)
-        p1[2] = 1
-        p2[2] = 1
-        let tens1 = mc.mat_mat(SO3.skew(p1), (K1 * T1))
-        let tens2 = mc.mat_mat(SO3.skew(p2), (K2 * T2))
+    try:
+        Python.add_to_path("src/sfm")
+        let iterative_svd = Python.import_module("cv_py").iterative_svd
+        # TODO Cheriality check?
 
-        # TODO: More efficient way to do this?
-        var A = Tensor[DType.float64](4, 4)
-        for i in range(2):
-            for j in range(4):
-                A[Index(i, j)] = tens1[Index(i, j)]
-                A[Index(i + 1, j)] = tens2[Index(i, j)]
+        let KT1 = K1 * T1
+        let KT2 = K2 * T2
 
-        let svd = mc.svd(A)
-        let z = svd.vh[3, 3]
-        let p3d = mc.Vector3d(svd.vh[3, 0] / z, svd.vh[3, 1] / z, svd.vh[3, 2] / z, 0)
-        out.push_back(Landmark(p3d))
+        var A = Tensor[DType.float64](n, 4, 4)
+        for i in range(n):
+            let p1 = mc.Vector3d(pts1[i, 0], pts1[i, 1], 1, 0)
+            let p2 = mc.Vector3d(pts2[i, 0], pts2[i, 1], 1, 0)
+            let tens1 = mc.mat_mat(SO3.skew(p1), KT1)
+            let tens2 = mc.mat_mat(SO3.skew(p2), KT2)
 
-    return out
+            for j in range(2):
+                for k in range(4):
+                    A[Index(i, j, k)] = tens1[Index(j, k)]
+                    A[Index(i, j + 2, k)] = tens2[Index(j, k)]
+
+        let result = mc.np2tensor2d_f64(iterative_svd(mc.tensor2np(A)))
+
+        for i in range(n):
+            let p3d = mc.get_row[DType.float64, 4](result, i)
+            out.push_back(Landmark(p3d))
+
+        # Extra raise to remove warnings!
+        if pts1.dim(0) != pts2.dim(0):
+            raise Error()
+
+        return out
+
+    except e:
+        print(e)
+        return out
 
 
 fn findFundamentalMat(
@@ -143,7 +153,6 @@ fn findFundamentalMat(
         A[Index(i, 8)] = 1.0
 
     let svd = mc.svd(A)
-    # print(A)
 
     var F = Tensor[DType.float64](3, 3)
     let z = svd.vh[8, 8]
@@ -157,9 +166,9 @@ fn findFundamentalMat(
     F[Index(2, 1)] = svd.vh[8, 7] / z
     F[Index(2, 2)] = 1
 
-    # var svd2 = mc.svd(F)
-    # svd2.s[2] = 0
-    # F = mc.mat_mat(mc.mat_mat(svd2.u, mc.diag(svd2.s)), svd2.vh)
+    var svd2 = mc.svd(F)
+    svd2.s[2] = 0
+    F = mc.mat_mat(mc.mat_mat(svd2.u, mc.diag(svd2.s)), svd2.vh)
 
     return F
 

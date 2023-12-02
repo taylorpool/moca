@@ -15,6 +15,18 @@ def skew(w):
     return np.array([[0, -w[2], w[1]], [w[2], 0, -w[0]], [-w[2], w[0], 0]])
 
 
+def iterative_svd(A):
+    n = A.shape[0]
+    out = np.empty((n, 4))
+    for i in range(n):
+        Asub = A[i]
+        U, s, V = np.linalg.svd(Asub)
+        out[i] = V[-1] / V[-1, -1]
+        out[i, -1] = 0
+
+    return out
+
+
 # ------------------------- Implementations ------------------------- #
 def PnP_mat(pts_img, pts_3d):
     pts_3d = homogenize(pts_3d)
