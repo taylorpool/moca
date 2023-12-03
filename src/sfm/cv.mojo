@@ -141,6 +141,7 @@ fn findFundamentalMat(
 ) -> Tensor[DType.float64]:
     let num_correspondences = kp1.shape()[0]
     var A = Tensor[DType.float64](num_correspondences, 9)
+    memset_zero(A.data(), A.num_elements())
     for i in range(num_correspondences):
         A[Index(i, 0)] = kp2[i, 0] * kp1[i, 0]
         A[Index(i, 1)] = kp2[i, 0] * kp1[i, 1]
@@ -166,6 +167,7 @@ fn findFundamentalMat(
     F[Index(2, 1)] = svd.vh[8, 7] / z
     F[Index(2, 2)] = 1
 
+    # Enforce rank 2
     var svd2 = mc.svd(F)
     svd2.s[2] = 0
     F = mc.mat_mat(mc.mat_mat(svd2.u, mc.diag(svd2.s)), svd2.vh)

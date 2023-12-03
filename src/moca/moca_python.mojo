@@ -62,6 +62,9 @@ fn np2tensor2d_i64(npin: PythonObject) -> Tensor[DType.int64]:
                 let index = row * cols + col
                 out_pointer.store(index, in_pointer[index])
 
+        if npin.dtype != np.int64:
+            raise Error("np2tensor2d_f64: input is not float64")
+
         return image
     except:
         print("Failed in new")
@@ -94,6 +97,39 @@ fn np2tensor2d_f64(npin: PythonObject) -> Tensor[DType.float64]:
             for col in range(cols):
                 let index = row * cols + col
                 out_pointer.store(index, in_pointer[index])
+
+        if npin.dtype != np.float64:
+            raise Error("np2tensor2d_f64: input is not float64")
+
+        return image
+    except:
+        print("Failed in new")
+        return Tensor[DType.float64]()
+
+
+fn np2tensor1d_f64(npin: PythonObject) -> Tensor[DType.float64]:
+    try:
+        let np = Python.import_module("numpy")
+
+        let num = npin.shape[0].__index__()
+        let image = Tensor[DType.float64](num)
+
+        let in_pointer = Pointer(
+            __mlir_op.`pop.index_to_pointer`[
+                _type = __mlir_type[`!kgen.pointer<scalar<f64>>`]
+            ](
+                SIMD[DType.index, 1](
+                    npin.__array_interface__["data"][0].__index__()
+                ).value
+            )
+        )
+        let out_pointer = Pointer(
+            __mlir_op.`pop.index_to_pointer`[
+                _type = __mlir_type[`!kgen.pointer<scalar<f64>>`]
+            ](SIMD[DType.index, 1](image.data().__as_index()).value)
+        )
+        for row in range(num):
+            out_pointer.store(row, in_pointer[row])
 
         if npin.dtype != np.float64:
             raise Error("np2tensor2d_f64: input is not float64")
@@ -155,7 +191,7 @@ fn svd(A: Tensor[DType.float64]) -> SVDResult:
         let result_np = np.linalg.svd(A_np)
         let result = SVDResult(
             np2tensor2d_f64(result_np.U),
-            np2tensor[DType.float64](result_np.S),
+            np2tensor1d_f64(result_np.S),
             np2tensor2d_f64(result_np.Vh),
         )
         return result

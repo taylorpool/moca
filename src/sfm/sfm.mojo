@@ -166,16 +166,21 @@ struct SfM:
 
     fn register_first_pair(inout self):
         # Get first image data
-        var pose_pair = (0, 0)
-        var cam_pair = (0, 0)
-        let first_factors = self.scene.get_first_pair(pose_pair)
-        let pose1_id = pose_pair.get[0, Int]()
-        let pose2_id = pose_pair.get[1, Int]()
+        let next_pair = self.scene.get_first_pair()
 
+        var cam_pair = (0, 0)
         var kp1 = Tensor[DType.float64](0)
         var kp2 = Tensor[DType.float64](0)
         var lm_idx = Tensor[DType.int64](0)
-        gather(first_factors, self.factors, pose_pair, cam_pair, kp1, kp2, lm_idx)
+        gather(
+            next_pair.factor_idx,
+            self.factors,
+            (next_pair.id1, next_pair.id2),
+            cam_pair,
+            kp1,
+            kp2,
+            lm_idx,
+        )
         let cam1_id = cam_pair.get[0, Int]()
         let cam2_id = cam_pair.get[1, Int]()
 
@@ -192,8 +197,8 @@ struct SfM:
         )
 
         # Insert everything into graph
-        self.active_poses.add(pose1_id)
-        self.active_poses.add(pose2_id)
+        self.active_poses.add(next_pair.id1)
+        self.active_poses.add(next_pair.id2)
         self.active_cameras.add(cam1_id)
         self.active_cameras.add(cam2_id)
         for i in range(lm_idx.dim(0)):
@@ -201,14 +206,110 @@ struct SfM:
             self.active_landmarks.add(idx)
             self.landmarks[idx] = lms[i]
 
-        for i in range(first_factors.dim(0)):
-            self.active_factors.add(first_factors[Index(i)].__int__())
+        for i in range(next_pair.factor_idx.dim(0)):
+            self.active_factors.add(next_pair.factor_idx[Index(i)].__int__())
 
-        self.poses[pose1_id] = pose1
-        self.poses[pose2_id] = pose2
+        self.poses[next_pair.id1] = pose1
+        self.poses[next_pair.id2] = pose2
 
     fn register(inout self):
-        pass
+        # TODO: Probably want some kind of cheriality check here after triangulation
+        #  - maybe remove those factors in the _init_estimate_lm function?
+        #  - might want to do the same for outliers in the _init_estimate_pose function
+        let next_pair = self.scene.get_next_pair(self.active_poses)
+
+        # Find which factors have / haven't been added
+        var new_lm_factors = IntSet(self.factors.__len__())  # for PnP
+        var old_factors = IntSet(self.factors.__len__())  # for Triangulation
+
+        for i in range(next_pair.factor_idx.dim(0)):
+            let id = next_pair.factor_idx[Index(i)].__int__()
+            let cam_id = self.factors[id].id_cam.__int__()
+            let lm_id = self.factors[id].id_lm.__int__()
+            if self.active_factors.contains(id):
+                old_factors.add(id)
+            if not self.active_landmarks.contains(lm_id):
+                new_lm_factors.add(id)
+
+            self.active_factors.add(id)
+            self.active_cameras.add(cam_id)
+
+        if old_factors.size() < 30:
+            print("Not enough new factors to register!")
+
+        # Add in any new poses
+        if not self.active_poses.contains(next_pair.id1):
+            self._estimate_init_pose(next_pair.id1, old_factors)
+        if not self.active_poses.contains(next_pair.id2):
+            self._estimate_init_pose(next_pair.id2, old_factors)
+        # Add in any new landmarks
+        if new_lm_factors.size() > 0:
+            self._estimate_init_landmarks(new_lm_factors)
+        else:
+            print("No new landmarks to add!")
+
+    fn _estimate_init_pose(inout self, pose_id: Int, factor_idx: IntSet):
+        """Initialize a pose based on a set of factors with initialized landmarks"""
+        # Get data for new factors
+        var pts3d = Tensor[DType.float64](factor_idx.size(), 3)
+        var pts2d = Tensor[DType.float64](factor_idx.size(), 2)
+        var cam_id = 0
+        for i in range(factor_idx.size()):
+            let id = factor_idx.elements[i]
+            let factor = self.factors[id]
+            let lm = self.landmarks[factor.id_lm.__int__()]
+            pts3d[Index(i, 0)] = lm.val[0]
+            pts3d[Index(i, 1)] = lm.val[1]
+            pts3d[Index(i, 2)] = lm.val[2]
+            pts2d[Index(i, 0)] = factor.measured[0]
+            pts2d[Index(i, 1)] = factor.measured[1]
+            if factor.id_pose == pose_id:
+                cam_id = factor.id_cam.__int__()
+        let pose_new = cv.PnP(self.cameras[cam_id], pts2d, pts3d)
+        self.poses[pose_id] = pose_new
+        self.active_poses.add(pose_id)
+
+    fn _estimate_init_landmarks(inout self, factor_idx: IntSet):
+        """Initialize landmarks based on a set of factors with initialized poses"""
+        # TODO: This assumes factors are ordered every other... hopefully ture
+        # Get data for new factors
+        let num_new: Int = (factor_idx.size() / 2).__int__()
+        var pts1 = Tensor[DType.float64](num_new, 2)
+        var pts2 = Tensor[DType.float64](num_new, 2)
+        var lm_id = Tensor[DType.int64](num_new)
+
+        let factor1 = self.factors[factor_idx.elements[0]]
+        let K1 = self.cameras[factor1.id_cam.__int__()]
+        let T1 = self.poses[factor1.id_pose.__int__()]
+
+        let factor2 = self.factors[factor_idx.elements[1]]
+        let K2 = self.cameras[factor2.id_cam.__int__()]
+        let T2 = self.poses[factor2.id_pose.__int__()]
+
+        var pose1_count = 0
+        var pose2_count = 0
+        for i in range(factor_idx.size()):
+            let id = factor_idx.elements[i]
+            let factor = self.factors[id]
+
+            if factor.id_pose == factor1.id_pose:
+                pts1[Index(pose1_count, 0)] = factor.measured[0]
+                pts1[Index(pose1_count, 1)] = factor.measured[1]
+                lm_id[pose1_count] = factor.id_lm
+                pose1_count += 1
+            elif factor.id_pose == factor2.id_pose:
+                pts2[Index(pose2_count, 0)] = factor.measured[0]
+                pts2[Index(pose2_count, 1)] = factor.measured[1]
+                pose2_count += 1
+            else:
+                print("ERROR: Factor does not belong to either image!", factor.id_pose)
+
+        let lm_new = cv.triangulate(K1, T1, pts1, K2, T2, pts2)
+
+        for i in range(num_new):
+            let this_id = lm_id[i].__int__()
+            self.landmarks[this_id] = lm_new[i]
+            self.active_landmarks.add(this_id)
 
     fn optimize(inout self):
         # TODO: Make sure not optimizing over first pose - it essentially needs a prior on it

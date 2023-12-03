@@ -855,7 +855,7 @@ fn solve_homogeneous_equation[
 
 fn diag[type: DType](v: Tensor[type]) -> Tensor[type]:
     let n = v.shape()[0]
-    if v.shape().num_elements() == 1:
+    if v.rank() == 1:
         var result = Tensor[type](n, n)
         memset_zero(result.data(), n * n)
         for i in range(n):

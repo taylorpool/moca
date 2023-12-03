@@ -24,9 +24,9 @@ def test_findFundamentalMat() -> NoneType:
     np = Python.import_module("numpy")
 
     # Define test data
-    np.random.seed(0)
-    kp1py = np.random.rand(8, 2) * 5
-    kp2py = kp1py + 15
+    rng = np.random.default_rng(0)
+    kp1py = rng.standard_normal((8, 2))
+    kp2py = kp1py + 5
 
     kp1 = mc.np2tensor2d_f64(kp1py)
     kp2 = mc.np2tensor2d_f64(kp2py)
