@@ -12,8 +12,6 @@ from src.util import (
 from src.variables import PinholeCamera, SE3, SO3
 import src.sfm.cv_util as cv_util
 
-from src.moca.test_moca import test_matT_matT
-
 
 fn randf() -> SIMD[DType.float64, 1]:
     return random.randn_float64(0, 1)

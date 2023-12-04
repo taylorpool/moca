@@ -6,16 +6,7 @@ from python import Python
 from utils.index import Index
 from memory import memset_zero
 import math
-
-# fn RANSAC[
-#     error: fn () -> Int32
-# ](max_iter: Int = 2048, threshold: Float64 = 1.5) -> Tensor[DType.float64]:
-#     var best_num = 0
-#     var best_result = 0
-
-#     for i in range(max_iter):
-#         var e = error()
-#         if e < best_result
+import random
 
 
 fn PnP(
@@ -67,11 +58,7 @@ fn PnP(
     return P
 
 
-fn PnP(
-    K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
-) -> SE3:
-    # Get projection matrix
-    let P = PnP(pts2d, pts3d)
+fn extractRt(K: PinholeCamera, P: Tensor[DType.float64]) -> SE3:
     let Rt = mc.mat_mat(mc.inv3(K.as_mat(True)), P)
 
     # Orthogonalize R to make sure it's a rotation matrix
@@ -86,6 +73,14 @@ fn PnP(
     t /= math.sqrt((t * t).reduce_add())
 
     return SE3(SO3(R), t)
+
+
+fn PnP(
+    K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
+) -> SE3:
+    # Get projection matrix
+    let P = PnP(pts2d, pts3d)
+    return extractRt(K, P)
 
 
 fn triangulate(
@@ -247,3 +242,135 @@ fn recoverPose(
             best_option = T2
 
     return best_option
+
+
+# ------------------------- RANSAC Wrappers ------------------------- #
+struct RANSACResult:
+    var num_inliers: Int
+    var inliers: Tensor[DType.bool]
+    var model: Tensor[DType.float64]
+    var pose: SE3
+
+    fn __init__(inout self):
+        self.num_inliers = 0
+        self.inliers = Tensor[DType.bool](0)
+        self.model = Tensor[DType.float64](0)
+        self.pose = SE3.identity()
+
+    fn __init__(
+        inout self,
+        num: Int,
+        model: Tensor[DType.float64],
+    ):
+        self.num_inliers = 0
+        self.inliers = Tensor[DType.bool](num)
+        self.model = model
+        self.pose = SE3.identity()
+
+    fn __init__(inout self, num: Int, pose: SE3):
+        self.num_inliers = 0
+        self.inliers = Tensor[DType.bool](num)
+        self.model = Tensor[DType.float64](0)
+        self.pose = pose
+
+    fn __copyinit__(inout self, existing: Self):
+        self.num_inliers = existing.num_inliers
+        self.inliers = existing.inliers
+        self.model = existing.model
+        self.pose = existing.pose
+
+
+fn RANSAC[
+    estimator: fn () capturing -> RANSACResult,
+    error2: fn (Int, RANSACResult) capturing -> Float64,
+    threshold: Float64,
+    max_iter: Int,
+]() -> RANSACResult:
+    var best = RANSACResult()
+
+    for i in range(max_iter):
+        var est = estimator()
+        for j in range(est.inliers.dim(0)):
+            if error2(j, est) < threshold:
+                est.inliers[j] = True
+                est.num_inliers += 1
+
+        if est.num_inliers > best.num_inliers:
+            best = est
+
+    return best
+
+
+fn findFundamentalMatRANSAC[
+    threshold: Float64 = 1e-3, max_iter: Int = 1024
+](kp1: Tensor[DType.float64], kp2: Tensor[DType.float64]) -> RANSACResult:
+    let n = kp1.dim(0)
+
+    @parameter
+    fn sample() -> RANSACResult:
+        let idx = Tensor[DType.uint64](8)
+        random.randint(idx.data(), 8, 0, n)
+        let k1 = mc.index(kp1, idx)
+        let k2 = mc.index(kp2, idx)
+        return RANSACResult(n, cv.findFundamentalMat(k1, k2))
+
+    @parameter
+    fn error2(i: Int, result: RANSACResult) -> Float64:
+        let F = result.model
+        let p1 = mc.Vector3d(kp1[i, 0], kp1[i, 1], 1.0)
+        let p2 = mc.Vector3d(kp2[i, 0], kp2[i, 1], 1.0)
+        var e = mc.vecT_mat_vec(p2, F, p1)
+        let Fx1 = mc.mat_vec(F, p1)
+        let FTx2 = mc.matT_vec(F, p2)
+        e /= Fx1[0] * Fx1[0] + Fx1[1] * Fx1[1] + FTx2[0] * FTx2[0] + FTx2[1] * FTx2[1]
+        return e
+
+    return RANSAC[sample, error2, threshold, max_iter]()
+
+
+fn findEssentialMatRANSAC[
+    threshold: Float64 = 1e-3, max_iter: Int = 1024
+](
+    kp1: Tensor[DType.float64],
+    kp2: Tensor[DType.float64],
+    K1: PinholeCamera,
+    K2: PinholeCamera,
+) -> RANSACResult:
+    let result = findFundamentalMatRANSAC[threshold, max_iter](kp1, kp2)
+    result.model = mc.mat_mat(
+        mc.matT_mat(K2.as_mat(True), result.model), K1.as_mat(True)
+    )
+    return result
+
+
+fn PnPRANSAC[
+    threshold: Float64 = 1e-3, max_iter: Int = 1024
+](
+    K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
+) -> RANSACResult:
+    let n = pts2d.dim(0)
+
+    @parameter
+    fn sample() -> RANSACResult:
+        let idx = Tensor[DType.uint64](10)
+        random.randint(idx.data(), 10, 0, n)
+        let p2d = mc.index(pts2d, idx)
+        let p3d = mc.index(pts3d, idx)
+        return RANSACResult(n, cv.PnP(p2d, p3d))
+
+    # Just use P without extracting into pose for speed
+    @parameter
+    fn error2(i: Int, result: RANSACResult) -> Float64:
+        let P = result.model
+        let p3 = mc.Vector4d(pts3d[i, 0], pts3d[i, 1], pts3d[i, 2], 1.0)
+        let p2 = mc.Vector3d(pts2d[i, 0], pts2d[i, 1], 1.0, 0.0)
+        var r = mc.mat_vec(P, p3)
+        r /= r[2]
+        r -= p2
+        return (r * r).reduce_add()
+
+    # Extract pose at end
+    var result = RANSAC[sample, error2, threshold, max_iter]()
+    result.pose = extractRt(K, result.model)
+
+    return result

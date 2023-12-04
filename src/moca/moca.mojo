@@ -8,7 +8,7 @@ from memory import memset_zero, memset
 
 # ------------------------- EASTON IMPLENTATIONS - UNTESTED ------------------------- #
 fn rand_rows[type: DType](t: Tensor[type], num_rows: Int) -> Tensor[type]:
-    let idx = Tensor[DType.uint64](10)
+    let idx = Tensor[DType.uint64](num_rows)
     random.randint(idx.data(), num_rows, 0, t.dim(0))
     return index[type](t, idx)
 
