@@ -61,6 +61,18 @@ fn det3(matrix: Tensor[DType.float64]) -> SIMD[DType.float64, 1]:
     return det
 
 
+fn sqrt[type: DType](x: Tensor[type]) -> Tensor[type]:
+    var result = Tensor[type](x.shape())
+    let r_ptr = result.data()
+    let x_ptr = x.data()
+
+    for i in range(x.num_elements()):
+        r_ptr.simd_store(i, math.sqrt(x_ptr.simd_load[1](i)))
+
+    return result
+
+
+
 fn squared_norm[type: DType](x: Tensor[type]) -> SIMD[type, 1]:
     var result = SIMD[type, 1](0)
     let ptr = x.data()
@@ -231,6 +243,17 @@ fn matT_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
             for k in range(r):
                 result[i_j] += lhs[k, i] * rhs[k, j]
     return result
+
+fn matT_mat[type: DType](inout result: Tensor[type], lhs: Tensor[type], rhs: Tensor[type], start_i: Int, start_j: Int):
+    let m = lhs.shape()[1]
+    let n = rhs.shape()[1]
+    let r = lhs.shape()[0]
+    for i in range(start_i, m + start_i):
+        for j in range(start_j, n + start_j):
+            let i_j = Index(i, j)
+            result[i_j] = 0
+            for k in range(r):
+                result[i_j] += lhs[k, i] * rhs[k, j]
 
 
 fn mat_matT[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
@@ -497,6 +520,16 @@ fn copy_col[type: DType](A: Tensor[type], col: Int, start_row: Int = 0) -> Tenso
         ptr.simd_store(A[i, col])
         ptr += 1
     return x
+
+fn copy[type: DType](src: Tensor[type], dest: Tensor[type], dest_start_row: Int, dest_start_col: Int):
+    for i in range(dest_start_row, src.shape()[0]+dest_start_row):
+        for j in range(dest_start_col, src.shape()[1]+dest_start_col):
+            dest[Index(i,j)] = src[i,j]
+
+
+fn copy[type: DType](src: Tensor[type], dest: Tensor[type], dest_start_index: Int):
+    for i in range(dest_start_index, src.shape()[0]+dest_start_index):
+        dest[i] = src[i]
 
 
 fn transpose[type: DType](A: Tensor[type]) -> Tensor[type]:

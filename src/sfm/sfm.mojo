@@ -15,15 +15,6 @@ from src.sfm.factors import ProjectionFactor
 from src.sfm.scene import SceneGraph
 import src.sfm.cv as cv
 
-
-fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
-    return i.to_float64().cast[type]()
-
-
-fn pyint(i: PythonObject) -> Int:
-    return i.__index__()
-
-
 fn gather(
     idx: Tensor[DType.int64],
     factors: DynamicVector[ProjectionFactor],
@@ -66,36 +57,144 @@ fn gather(
 
     cam_pair = (cam1_id, cam2_id)
 
+alias camera_dim = 4
+alias pose_dim = 6
+alias landmark_dim = 3
+alias factor_dim = 2
+
+@value
+struct PartiallyActiveVector[type: AnyType]:
+    var dim: Int
+    var values: DynamicVector[type]
+    var active_to_id: IntSet
+    var id_to_active: IntSet
+
+    fn __init__(inout self, dim: Int):
+        self.dim = dim
+        self.values = DynamicVector[type](0)
+        self.active_to_id = IntSet(0)
+        self.id_to_active = IntSet(0)
+
+    fn offset(self) -> Int:
+        return self.dim*self.active_to_id.size()
+
+@value
+struct SfMState:
+    var cameras: PartiallyActiveVector[PinholeCamera]
+    var poses: PartiallyActiveVector[SE3]
+    var landmarks: PartiallyActiveVector[Landmark]
+
+    fn __init__(inout self):
+        self.cameras = PartiallyActiveVector[PinholeCamera](4)
+        self.poses = PartiallyActiveVector[SE3](6)
+        self.landmarks = PartiallyActiveVector[Landmark](3)
+
+alias SfMFactors = PartiallyActiveVector[ProjectionFactor]
+
+fn compute_residual_vec(state: SfMState, factors: SfMFactors) -> Tensor[DType.float64]:
+    var residual = Tensor[DType.float64](factors.offset()+6)
+    for i in range(factors.active_to_id.size()):
+        let factor = factors.values[factors.active_to_id[i]]
+        residual.simd_store(factors.dim*i, factor.residual(
+            state.cameras.values[factor.id_cam],
+            state.poses.values[factor.id_pose],
+            state.landmarks.values[factor.id_lm]
+        ))
+
+    return residual
+
+fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.float64]:
+    let camera_offset = state.cameras.offset()
+    let pose_offset = camera_offset + state.poses.offset()
+    let landmark_offset = pose_offset + state.landmarks.offset()
+
+    var Dr = Tensor[DType.float64](factor_dim*state.factors.active_to_id.size(), landmark_offset)
+
+    for i in range(state.factors.active_to_id.size()):
+        let factor = state.factors[state.factors.active_to_id[i]]
+        var H_K = Tensor[DType.float64](residual_dim, camera_dim)
+        var H_T = Tensor[DType.float64](residual_dim, pose_dim)
+        var H_p = Tensor[DType.float64](residual_dim, landmark_dim)
+        factor.jacobian(
+            state.cameras.values[factor.id_cam],
+            state.poses.values[factor.id_pose],
+            state.landmarks.values[factor.id_lm],
+            H_K,
+            H_T,
+            H_p
+        )
+        let row = factor_dim*i
+        mc.copy(H_K, Dr, row, camera_dim*state.cameras.id_to_active[factor.id_cam])
+        let pose_col = pose_dim*state.poses.id_to_active[factor.id_pose] + camera_offset
+        if factor.id_pose != 0:
+            mc.copy(H_T, Dr, row, pose_dim*state.poses.id_to_active[factor.id_pose] + camera_offset)
+        else:
+            let rowp1 = row+1
+            Dr[row, pose_col] = 0
+            Dr[row, pose_col+1] = 0
+            Dr[row, pose_col+2] = 0
+            Dr[row, pose_col+3] = 0
+            Dr[row, pose_col+4] = 0
+            Dr[row, pose_col+5] = 0
+            Dr[rowp1, pose_col] = 0
+            Dr[rowp1, pose_col+1] = 0
+            Dr[rowp1, pose_col+2] = 0
+            Dr[rowp1, pose_col+3] = 0
+            Dr[rowp1, pose_col+4] = 0
+            Dr[rowp1, pose_col+5] = 0
+        mc.copy(H_p, Dr, row, landmark_dim*state.landmarks.id_to_active[factor.id_lm] + pose_offset)
+    return Dr
+
+
+fn perturb(state: SfMState, perturbation: Tensor[DType.float64]) -> SfMState:
+    let perturbed_state = state
+    let camera_offset = state.cameras.offset()
+    let pose_offset = state.poses.offset() + camera_offset
+
+    for i in range(state.cameras.active_to_id.size()):
+        let id = state.cameras.active_to_id[i]
+        perturbation_index = camera_dim*i
+        perturbed_state.cameras.values[id].cal[0] += perturbation[perturbation_index]
+        perturbed_state.cameras.values[id].cal[1] += perturbation[perturbation_index+1]
+        perturbed_state.cameras.values[id].cal[2] += perturbation[perturbation_index+2]
+        perturbed_state.cameras.values[id].cal[3] += perturbation[perturbation_index+3]
+
+    for i in range(state.poses.active_to_id.size()):
+        let id = state.poses.active_to_id[i]
+        let twist_index = pose_dim*i + camera_offset
+        let twist = mc.Vector6d(
+            perturbation[twist_index],
+            perturbation[twist_index+1],
+            perturbation[twist_index+2],
+            perturbation[twist_index+3],
+            perturbation[twist_index+4],
+            perturbation[twist_index+5]
+        )
+        perturbed_state.poses.values[id] = state.poses.values[id] + twist
+
+    for i in range(state.landmarks.active_to_id.size()):
+        let id = state.landmarks.active_to_id[i]
+        let index = landmark_dim*i + pose_offset
+        perturbed_state.landmarks.values[id].val[0] += perturbation[index]
+        perturbed_state.landmarks.values[id].val[1] += perturbation[index+1]
+        perturbed_state.landmarks.values[id].val[2] += perturbation[index+2]
+
+
+    return perturbed_state
 
 struct SfM:
     var dir_images: Path
     var scene: SceneGraph
 
-    # Storage for entire graph
-    var poses: DynamicVector[SE3]
-    var landmarks: DynamicVector[Landmark]
-    var cameras: DynamicVector[PinholeCamera]
-    var factors: DynamicVector[ProjectionFactor]
+    var state: SfMState
+    var factors: SfMFactors
 
-    # Contains the indices of variables/factors that have been added to the graph
-    var active_poses: IntSet
-    var active_landmarks: IntSet
-    var active_cameras: IntSet
-    var active_factors: IntSet
 
     fn __init__(inout self, dir_images: Path):
         self.dir_images = dir_images
         self.scene = SceneGraph()
-
-        self.poses = DynamicVector[SE3](0)
-        self.landmarks = DynamicVector[Landmark](0)
-        self.cameras = DynamicVector[PinholeCamera](0)
-        self.factors = DynamicVector[ProjectionFactor](0)
-
-        self.active_poses = IntSet(0)
-        self.active_landmarks = IntSet(0)
-        self.active_cameras = IntSet(0)
-        self.active_factors = IntSet(0)
+        self.state = SfMState()
+        self.factors = SfMFactors()
 
     fn frontend(inout self, force: Bool = False) raises:
         """Run COLMAP as frontend to get all factors."""
@@ -110,21 +209,15 @@ struct SfM:
         let num_factors = sfm_data.factors.__len__().__index__()
 
         # Fill everything in
-        self.poses = DynamicVector[SE3](num_poses)
-        self.landmarks = DynamicVector[Landmark](num_lm)
-        self.cameras = DynamicVector[PinholeCamera](num_cam)
-        self.factors = DynamicVector[ProjectionFactor](num_factors)
+        self.state.cameras.values = DynamicVector[PinholeCamera](num_cam)
+        self.state.poses.values = DynamicVector[SE3](num_poses)
+        self.state.landmarks.values = DynamicVector[Landmark](num_lm)
+        self.factors.values = DynamicVector[ProjectionFactor](num_factors)
 
-        self.active_poses = IntSet(num_poses)
-        self.active_landmarks = IntSet(num_lm)
-        self.active_cameras = IntSet(num_cam)
-        self.active_factors = IntSet(num_factors)
-
-        for _ in range(num_cam):
-            self.poses.push_back(SE3.identity())
-
-        for _ in range(num_lm):
-            self.landmarks.push_back(Landmark.identity())
+        self.state.cameras.active_to_id = IntSet(num_cam)
+        self.state.poses.active_to_id = IntSet(num_poses)
+        self.state.landmarks.active_to_id = IntSet(num_lm)
+        self.factors.active_to_id = IntSet(num_factors)
 
         for cam in sfm_data.cameras:
             let cal = SIMD[DType.float64, 4](
@@ -133,7 +226,14 @@ struct SfM:
                 pyfloat[DType.float64](cam.px),
                 pyfloat[DType.float64](cam.py),
             )
-            self.cameras.push_back(PinholeCamera(cal))
+            self.state.cameras.values.push_back(PinholeCamera(cal))
+
+        for _ in range(num_cam):
+            self.state.poses.values.push_back(SE3.identity())
+
+        for _ in range(num_lm):
+            self.state.landmarks.values.push_back(Landmark.identity())
+
 
         for factor in sfm_data.factors:
             let measured = SIMD[DType.float64, 2](
@@ -143,7 +243,7 @@ struct SfM:
             let id_cam = pyint(factor.id_cam)
             let id_lm = pyint(factor.id_lm)
             let f = ProjectionFactor(id_pose, id_cam, id_lm, measured)
-            self.factors.push_back(f)
+            self.factors.values.push_back(f)
 
         # Setup SceneGraph tracker
         var id_pairs = TupleIntDict()
@@ -197,20 +297,21 @@ struct SfM:
         )
 
         # Insert everything into graph
-        self.active_poses.add(next_pair.id1)
-        self.active_poses.add(next_pair.id2)
-        self.active_cameras.add(cam1_id)
-        self.active_cameras.add(cam2_id)
+        self.state.poses.active_to_id.add(next_pair.id1)
+        self.state.poses.active_to_id.add(next_pair.id2)
+        self.state.poses[next_pair.id1] = pose1
+        self.state.poses[next_pair.id2] = pose2
+
+        self.state.cameras.active_to_id.add(cam1_id)
+        self.state.cameras.active_to_id.add(cam2_id)
+
         for i in range(lm_idx.dim(0)):
             let idx = lm_idx[Index(i)].__int__()
-            self.active_landmarks.add(idx)
-            self.landmarks[idx] = lms[i]
+            self.state.landmarks.active_to_id.add(idx)
+            self.state.landmarks[idx] = lms[i]
 
         for i in range(next_pair.factor_idx.dim(0)):
-            self.active_factors.add(next_pair.factor_idx[Index(i)].__int__())
-
-        self.poses[next_pair.id1] = pose1
-        self.poses[next_pair.id2] = pose2
+            self.factors.active_to_id.add(next_pair.factor_idx[Index(i)].__int__())
 
     fn register(inout self):
         # TODO: Probably want some kind of cheriality check here after triangulation
@@ -311,57 +412,39 @@ struct SfM:
             self.landmarks[this_id] = lm_new[i]
             self.active_landmarks.add(this_id)
 
-    fn optimize(inout self):
+
+    fn optimize(inout self, max_iters: Int = 100, abs_tol = 1e-2, rel_tol = 1e-12):
         # TODO: Make sure not optimizing over first pose - it essentially needs a prior on it
-        let num_cameras = self.active_cameras.size()
-        let num_landmarks = self.active_landmarks.size()
-        let intrinsic_dim = 9
-        let extrinsic_dim = 7
-        let landmark_dim = 3
 
-        var x = Tensor[DType.float64](
-            num_cameras * (intrinsic_dim + extrinsic_dim) + num_landmarks * landmark_dim
-        )
+        var abs_error = abs_tol + 1
+        var rel_diff = rel_tol + 1
 
-        let max_iters = 100
         for iter in range(max_iters):
-            # Factors to optimize with
-            var A = Tensor[DType.float64]()
-            var b = Tensor[DType.float64]()
-            for i in range(self.active_factors.elements.size):
-                let factor = self.factors[i]
-                let camera_intrinsic = self.cameras[factor.id_cam.to_int()]
-                let camera_extrinsic = self.poses[factor.id_pose.to_int()]
-                let landmark = self.landmarks[factor.id_lm.to_int()]
-                var H_camera_intrinsic: Tensor[DType.float64]
-                var H_camera_extrinsic: Tensor[DType.float64]
-                var H_landmark: Tensor[DType.float64]
-                let residual = self.factors[i].residual(
-                    camera_intrinsic, camera_extrinsic, landmark
-                )
-                self.factors[i].jacobian(
-                    camera_intrinsic,
-                    camera_extrinsic,
-                    landmark,
-                    H_camera_intrinsic,
-                    H_camera_extrinsic,
-                    H_landmark,
-                )
+            let r = compute_residual_vec(self.state, self.factors)
+            let r_norm = mc.squared_norm(r)
+            let Dr = compute_residual_jac(self.state, self.factors)
 
-                var Dr_i = Tensor[DType.float64](
-                    H_camera_intrinsic.shape()[0],
-                    H_camera_intrinsic.shape()[1]
-                    + H_camera_extrinsic.shape()[1]
-                    + H_landmark.shape()[1],
-                )
-                b = mc.subtract(b, mc.matT_vec[DType.float64, 2](Dr_i, residual))
-                A = mc.add(A, mc.matT_mat(Dr_i, Dr_i))
+            let DrT_Dr = mc.matT_mat(Dr, Dr)
+            let diags = mc.diag(mc.diag(DrT_Dr))
+            let DrT_b = mc.multiply(-1.0, mc.matT_vec(Dr, r))
 
-            var lambd: Float64 = 1e-6
+            var lambd: Float64 = 1e-4
             for lambd_index in range(10):
-                let qr = moca.qr_factor(A)
-                let step = qr.solve(b)
+                let llt = mc.llt_factor(mc.add(DrT_Dr, mc.multiply(lambd, diags)))
+                let step = llt.solve(DrT_b)
 
-                x = moca.add(x, step)
+                let next_state = perturb(self.state, step)
+                let next_r = compute_residual_vec(next_state, self.factors)
+                let next_r_norm = mc.squared_norm(next_r)
+                if next_r_norm < r_norm:
+                    self.state = next_state
+                    rel_diff = mc.squared_norm(step)
+                    abs_error = next_r_norm
+                    break
+                else:
+                    lambd *= 10.0
+
+            if rel_diff < rel_tol or abs_error < abs_tol:
                 break
-                lambd *= 10.0
+                    
+

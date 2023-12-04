@@ -1,4 +1,4 @@
-from math import sqrt, sin, cos
+farom math import sqrt, sin, cos, atan2
 from utils.index import Index
 import src.moca as mc
 
@@ -92,6 +92,15 @@ struct SO3:
             vec[3] = cos(theta / 2)
 
         return Self(vec)
+
+    @always_inline
+    @staticmethod
+    fn logmap(x: Self) -> mc.Vector3d:
+        var v = x.quat
+        v[3] = 0
+        let norm_v = sqrt((v*v).reduce_add())
+        return 2.0*v*atan2(norm_v, x.quat[3])/norm_v
+        
 
     @always_inline
     @staticmethod

@@ -4,12 +4,11 @@ from utils.index import Index
 from python import Python
 import math
 from src.util import (
-    np2simd,
-    np2tensor2d,
     assert_almost_equal,
     assert_almost_equal_tensor,
     nder,
 )
+from src.moca.moca_python import np2simd, np2tensor2d
 import src.moca as mc
 
 

@@ -4,6 +4,14 @@ from python import Python
 
 
 # ------------------------- Conversions ------------------------- #
+
+fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
+    return i.to_float64().cast[type]()
+
+
+fn pyint(i: PythonObject) -> Int:
+    return i.__index__()
+
 fn np2simd[
     n: Int, type: DType = DType.float64
 ](a: PythonObject) raises -> SIMD[type, n]:
