@@ -125,7 +125,7 @@ fn zeros_like[type: DType](A: Tensor[type]) -> Tensor[type]:
 fn set_zero[type: DType](inout A: Tensor[type], start_row: Int, start_col: Int, end_row: Int, end_col: Int):
     for row in range(start_row, end_row):
         for col in range(start_col, end_col):
-            A[row,col] = 0
+            A[Index(row,col)] = 0
 
 fn ones[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
     let result = Tensor[type](dims)
@@ -244,8 +244,10 @@ fn matT_mat[type: DType](lhs: Tensor[type], rhs: Tensor[type]) -> Tensor[type]:
         for j in range(n):
             let i_j = Index(i, j)
             result[i_j] = 0
-            for k in range(r):
+            @parameter
+            fn _dot[nelts: Int](k: Int):
                 result[i_j] += lhs[k, i] * rhs[k, j]
+            vectorize_unroll[simdwidthof[type](), 2, _dot](r)
     return result
 
 fn matT_mat[type: DType](inout result: Tensor[type], lhs: Tensor[type], rhs: Tensor[type], start_i: Int, start_j: Int):
@@ -525,13 +527,13 @@ fn copy_col[type: DType](A: Tensor[type], col: Int, start_row: Int = 0) -> Tenso
         ptr += 1
     return x
 
-fn copy[type: DType](src: Tensor[type], dest: Tensor[type], dest_start_row: Int, dest_start_col: Int):
+fn copy[type: DType](src: Tensor[type], inout dest: Tensor[type], dest_start_row: Int, dest_start_col: Int):
     for i in range(dest_start_row, src.shape()[0]+dest_start_row):
         for j in range(dest_start_col, src.shape()[1]+dest_start_col):
             dest[Index(i,j)] = src[i,j]
 
 
-fn copy[type: DType](src: Tensor[type], dest: Tensor[type], dest_start_index: Int):
+fn copy[type: DType](src: Tensor[type], inout dest: Tensor[type], dest_start_index: Int):
     for i in range(dest_start_index, src.shape()[0]+dest_start_index):
         dest[i] = src[i]
 

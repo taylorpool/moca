@@ -43,8 +43,8 @@ struct SE3:
     @staticmethod
     fn expmap(xi: mc.Vector6d) -> Self:
         # TODO Full exponential or just chained here?
-        var omega = mc.Vector3d(xi[0], xi[1], xi[2], 0)
-        var v = mc.Vector3d(xi[3], xi[4], xi[5], 0)
+        let omega = mc.Vector3d(xi[0], xi[1], xi[2], 0)
+        let v = mc.Vector3d(xi[3], xi[4], xi[5], 0)
         let R = SO3.expmap(omega)
 
         let theta2 = (omega * omega).reduce_add()
@@ -71,7 +71,6 @@ struct SE3:
     #     let theta3 = theta2*theta
     #     let M = SO3.skew(w)
     #     let V = (1-cos(theta))/(theta2) + (theta - sin(theta))/(theta3)
-        
 
     @always_inline
     fn as_mat(self) -> Tensor[DType.float64]:

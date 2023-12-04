@@ -1,3 +1,4 @@
+@value
 struct Set[type: AnyType, hash: fn (type) -> Int]:
     var n: Int
     var elements: DynamicVector[type]
@@ -16,7 +17,7 @@ struct Set[type: AnyType, hash: fn (type) -> Int]:
             self.elements.push_back(x)
             self.exists[e] = True
 
-    fn contains(inout self, x: type) -> Bool:
+    fn contains(self, x: type) -> Bool:
         let e = hash(x)
         return self.exists[e]
 

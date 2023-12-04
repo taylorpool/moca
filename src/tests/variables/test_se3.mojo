@@ -3,8 +3,6 @@ from utils.index import Index
 from python import Python
 import math
 from src.util import (
-    np2simd,
-    np2tensor2d,
     assert_almost_equal,
     assert_almost_equal_tensor,
 )
@@ -14,7 +12,7 @@ import src.moca as mc
 
 
 def rot32quat(rot3: PythonObject) -> mc.Vector4d:
-    return np2simd[4](rot3.toQuaternion().coeffs())
+    return mc.np2simd[4](rot3.toQuaternion().coeffs())
 
 
 def quat2rot3(q: mc.Vector4d) -> PythonObject:
@@ -28,9 +26,9 @@ def test_expmap() -> NoneType:
     np = Python.import_module("numpy")
 
     xipy = np.array([0.1, 0.1, 0.1, 1, 2, 3])
-    xi = np2simd[8](xipy)
+    xi = mc.np2simd[8](xipy)
 
-    T_des = np2tensor2d[DType.float64](gtsam.Pose3().Expmap(xipy).matrix())
+    T_des = mc.np2tensor2d[DType.float64](gtsam.Pose3().Expmap(xipy).matrix())
     T_mine = SE3.expmap(xi).as_mat()
 
     assert_almost_equal_tensor[DType.float64, 16](T_des, T_mine)
@@ -44,13 +42,13 @@ def test_mult() -> NoneType:
     qpy = np.array([0, 0, 1, 0])
     tpy = np.array([1, 2, 3])
 
-    q = np2simd[4](qpy)
-    t = np2simd[4](tpy)
+    q = mc.np2simd[4](qpy)
+    t = mc.np2simd[4](tpy)
 
     Tpy = gtsam.Pose3(quat2rot3(q), tpy)
     T = SE3(q, t)
 
-    T_des = np2tensor2d[DType.float64]((Tpy * Tpy).matrix())
+    T_des = mc.np2tensor2d[DType.float64]((Tpy * Tpy).matrix())
     T_mine = (T * T).as_mat()
 
     assert_almost_equal_tensor[DType.float64, 16](T_des, T_mine)
@@ -74,13 +72,13 @@ def test_matrix() -> NoneType:
     qpy = np.array([0, 0, 1, 0])
     tpy = np.array([1, 2, 3])
 
-    q = np2simd[4](qpy)
-    t = np2simd[4](tpy)
+    q = mc.np2simd[4](qpy)
+    t = mc.np2simd[4](tpy)
 
     Tpy = gtsam.Pose3(quat2rot3(q), tpy)
     T = SE3(q, t)
 
-    T_des = np2tensor2d[DType.float64](Tpy.matrix())
+    T_des = mc.np2tensor2d[DType.float64](Tpy.matrix())
     T_mine = T.as_mat()
 
     assert_almost_equal_tensor[DType.float64, 16](T_des, T_mine)
@@ -95,14 +93,14 @@ def test_retract() -> NoneType:
     qpy = np.array([0, 0, 1, 0])
     tpy = np.array([1, 2, 3])
 
-    xi = np2simd[8](xipy)
-    q = np2simd[4](qpy)
-    t = np2simd[4](tpy)
+    xi = mc.np2simd[8](xipy)
+    q = mc.np2simd[4](qpy)
+    t = mc.np2simd[4](tpy)
 
     Tpy = gtsam.Pose3(quat2rot3(q), tpy)
     T = SE3(q, t)
 
-    T_des = np2tensor2d[DType.float64](Tpy.retract(xipy).matrix())
+    T_des = mc.np2tensor2d[DType.float64](Tpy.retract(xipy).matrix())
     T_mine = (T + xi).as_mat()
 
     assert_almost_equal_tensor[DType.float64, 16](T_des, T_mine)
@@ -116,13 +114,13 @@ def test_inv() -> NoneType:
     qpy = np.array([0, 0, 1, 0])
     tpy = np.array([1, 2, 3])
 
-    q = np2simd[4](qpy)
-    t = np2simd[4](tpy)
+    q = mc.np2simd[4](qpy)
+    t = mc.np2simd[4](tpy)
 
     Tpy = gtsam.Pose3(quat2rot3(q), tpy)
     T = SE3(q, t)
 
-    T_des = np2tensor2d[DType.float64](Tpy.inverse().matrix())
+    T_des = mc.np2tensor2d[DType.float64](Tpy.inverse().matrix())
     T_mine = T.inv().as_mat()
 
     assert_almost_equal_tensor[DType.float64, 16](T_des, T_mine)
@@ -138,14 +136,14 @@ def test_rotate() -> NoneType:
     tpy = np.array([1, 2, 3])
     ppy = np.array([4, 5, 6])
 
-    q = np2simd[4](qpy)
-    t = np2simd[4](tpy)
-    p = np2simd[4](ppy)
+    q = mc.np2simd[4](qpy)
+    t = mc.np2simd[4](tpy)
+    p = mc.np2simd[4](ppy)
 
     Tpy = gtsam.Pose3(quat2rot3(q), tpy)
     T = SE3(q, t)
 
-    p_des = np2simd[4](Tpy.transformFrom(ppy))
+    p_des = mc.np2simd[4](Tpy.transformFrom(ppy))
     p_mine = T * p
 
     assert_almost_equal[DType.float64, 4](p_des, p_mine)
