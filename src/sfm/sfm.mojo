@@ -66,14 +66,14 @@ alias factor_dim = 2
 struct PartiallyActiveVector[type: AnyType]:
     var dim: Int
     var values: DynamicVector[type]
-    var active_to_id: IntSet
-    var id_to_active: IntSet
+    var active_to_id: DynamicVector[Int]
+    var id_to_active: DynamicVector[Int]
 
     fn __init__(inout self, dim: Int):
         self.dim = dim
         self.values = DynamicVector[type](0)
-        self.active_to_id = IntSet(0)
-        self.id_to_active = IntSet(0)
+        self.active_to_id = DynamicVector[Int](0)
+        self.id_to_active = DynamicVector[Int](0)
 
     fn offset(self) -> Int:
         return self.dim*self.active_to_id.size()
@@ -85,9 +85,9 @@ struct SfMState:
     var landmarks: PartiallyActiveVector[Landmark]
 
     fn __init__(inout self):
-        self.cameras = PartiallyActiveVector[PinholeCamera](4)
-        self.poses = PartiallyActiveVector[SE3](6)
-        self.landmarks = PartiallyActiveVector[Landmark](3)
+        self.cameras = PartiallyActiveVector[PinholeCamera](camera_dim)
+        self.poses = PartiallyActiveVector[SE3](pose_dim)
+        self.landmarks = PartiallyActiveVector[Landmark](landmark_dim)
 
 alias SfMFactors = PartiallyActiveVector[ProjectionFactor]
 
@@ -129,19 +129,7 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
         if factor.id_pose != 0:
             mc.copy(H_T, Dr, row, pose_dim*state.poses.id_to_active[factor.id_pose] + camera_offset)
         else:
-            let rowp1 = row+1
-            Dr[row, pose_col] = 0
-            Dr[row, pose_col+1] = 0
-            Dr[row, pose_col+2] = 0
-            Dr[row, pose_col+3] = 0
-            Dr[row, pose_col+4] = 0
-            Dr[row, pose_col+5] = 0
-            Dr[rowp1, pose_col] = 0
-            Dr[rowp1, pose_col+1] = 0
-            Dr[rowp1, pose_col+2] = 0
-            Dr[rowp1, pose_col+3] = 0
-            Dr[rowp1, pose_col+4] = 0
-            Dr[rowp1, pose_col+5] = 0
+            mc.set_zero(Dr, row, pose_col, row+1, pose_col+pose_dim)
         mc.copy(H_p, Dr, row, landmark_dim*state.landmarks.id_to_active[factor.id_lm] + pose_offset)
     return Dr
 

@@ -122,6 +122,10 @@ fn zeros_like[type: DType](A: Tensor[type]) -> Tensor[type]:
     memset_zero(Z.data(), Z.num_elements())
     return Z
 
+fn set_zero[type: DType](inout A: Tensor[type], start_row: Int, start_col: Int, end_row: Int, end_col: Int):
+    for row in range(start_row, end_row):
+        for col in range(start_col, end_col):
+            A[row,col] = 0
 
 fn ones[type: DType = DType.float64](*dims: Int) -> Tensor[type]:
     let result = Tensor[type](dims)
