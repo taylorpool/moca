@@ -1,6 +1,7 @@
 from pathlib import Path, cwd
 from python import Python
 from tensor import TensorShape
+from memory import memset_zero
 from utils.index import Index
 
 from src.set import IntSet
@@ -34,6 +35,10 @@ fn gather(
     let id_img1 = pair.get[0, Int]()
     let id_img2 = pair.get[1, Int]()
 
+    # var tempSet = IntSet(factors.__len__())
+
+    # print("Gathering factors for pair:", id_img1, id_img2)
+
     for i in range(num_factors):
         let id = idx[Index(i)].__int__()
         if id == -1:
@@ -43,6 +48,14 @@ fn gather(
             kp1[Index(kp1_count, 0)] = factor.measured[0]
             kp1[Index(kp1_count, 1)] = factor.measured[1]
             lm_idx[kp1_count] = factor.id_lm
+            # if tempSet.contains(factor.id_lm.__int__()):
+            #     print(
+            #         "ERROR: Landmark already used!",
+            #         factor.id_pose.__int__(),
+            #         factor.id_lm.__int__(),
+            #     )
+            # else:
+            #     tempSet.add(factor.id_lm.__int__())
             cam1_id = factor.id_cam.__int__()
             kp1_count += 1
         elif factor.id_pose == id_img2:
@@ -74,6 +87,12 @@ struct PartiallyActiveVector[type: AnyType]:
         self.values = DynamicVector[type](0)
         self.active_to_id = IntSet(0)
         self.id_to_active = DynamicVector[Int](0)
+
+    fn __copyinit__(inout self, other: Self):
+        self.dim = other.dim
+        self.values.__copyinit__(other.values)
+        self.active_to_id.__copyinit__(other.active_to_id)
+        self.id_to_active.__copyinit__(other.id_to_active)
 
     fn resize(inout self, size: Int):
         self.values = DynamicVector[type](size)
@@ -114,6 +133,11 @@ struct SfMState:
         self.poses = PartiallyActiveVector[SE3](pose_dim)
         self.landmarks = PartiallyActiveVector[Landmark](landmark_dim)
 
+    fn __copyinit__(inout self, other: Self):
+        self.cameras.__copyinit__(other.cameras)
+        self.poses.__copyinit__(other.poses)
+        self.landmarks.__copyinit__(other.landmarks)
+
 
 alias SfMFactors = PartiallyActiveVector[ProjectionFactor]
 
@@ -131,6 +155,12 @@ fn compute_residual_vec(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
             ),
         )
 
+    # let rot_diff = SO3.logmap(state.poses.values[0].rot)
+    # let trans_diff = state.poses.values[0].trans
+    # for i in range(3):
+    #     residual[factors.offset() + i] = rot_diff[i]
+    #     residual[factors.offset() + 3 + i] = trans_diff[i]
+
     return residual
 
 
@@ -140,6 +170,7 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
     let landmark_offset = pose_offset + state.landmarks.offset()
 
     var Dr = Tensor[DType.float64](factor_dim * factors.size(), landmark_offset)
+    memset_zero(Dr.data(), Dr.num_elements())
 
     for i in range(factors.size()):
         let factor = factors.values[factors.active_to_id.elements[i]]
@@ -167,16 +198,16 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
         let pose_col = pose_dim * state.poses.id_to_active[
             factor.id_pose.__int__()
         ] + camera_offset
-        if factor.id_pose != 0:
-            mc.copy(
-                H_T,
-                Dr,
-                row,
-                pose_dim * state.poses.id_to_active[factor.id_pose.__int__()]
-                + camera_offset,
-            )
-        else:
-            mc.set_zero(Dr, row, pose_col, row + 1, pose_col + pose_dim)
+        # if factor.id_pose != state.poses.active_to_id.elements[0]:
+        mc.copy(
+            H_T,
+            Dr,
+            row,
+            pose_dim * state.poses.id_to_active[factor.id_pose.__int__()]
+            + camera_offset,
+        )
+        # else:
+        #     mc.set_zero(Dr, row, pose_col, row + 1, pose_col + pose_dim)
 
         mc.copy(
             H_p,
@@ -185,11 +216,16 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
             landmark_dim * state.landmarks.id_to_active[factor.id_lm.__int__()]
             + pose_offset,
         )
+
+    # let I = mc.eye(6)
+    # mc.copy(I, Dr, factor_dim * factors.size(), camera_offset)
+
     return Dr
 
 
-fn perturb(state: SfMState, perturbation: Tensor[DType.float64]) -> SfMState:
-    var perturbed_state = state
+fn perturb(borrowed state: SfMState, perturbation: Tensor[DType.float64]) -> SfMState:
+    var perturbed_state: SfMState
+    perturbed_state.__copyinit__(state)
     let camera_offset = state.cameras.offset()
     let pose_offset = state.poses.offset() + camera_offset
 
@@ -333,7 +369,7 @@ struct SfM:
             self.state.cameras.values[cam2_id],
         )
         let pose1 = SE3.identity()
-        let pose2 = cv.recoverPose(
+        var pose2 = cv.recoverPose(
             E,
             kp1,
             kp2,
@@ -349,6 +385,8 @@ struct SfM:
             kp2,
         )
 
+        pose2.rot = SO3.identity()
+
         # Insert everything into graph
         self.state.poses.add(next_pair.id1)
         self.state.poses.add(next_pair.id2)
@@ -358,10 +396,14 @@ struct SfM:
         self.state.cameras.add(cam1_id)
         self.state.cameras.add(cam2_id)
 
+        print(pose2.trans)
+        print(pose2.rot.as_mat())
+
         for i in range(lm_idx.dim(0)):
             let idx = lm_idx[Index(i)].__int__()
             self.state.landmarks.add(idx)
             self.state.landmarks.values[idx] = lms[i]
+            # print(lms[i].val)
 
         for i in range(next_pair.factor_idx.dim(0)):
             self.factors.add(next_pair.factor_idx[Index(i)].__int__())
@@ -468,7 +510,7 @@ struct SfM:
 
     fn optimize(
         inout self,
-        max_iters: Int = 100,
+        max_iters: Int = 20,
         abs_tol: Float64 = 1e-2,
         rel_tol: Float64 = 1e-12,
     ):
@@ -476,39 +518,43 @@ struct SfM:
         var rel_diff = rel_tol + 1
 
         for iter in range(max_iters):
-            let r = compute_residual_vec(self.state, self.factors)
-            let r_norm = mc.squared_norm(r)
-            print("residual_vec:", r_norm, r.shape()[0])
-            let Dr = compute_residual_jac(self.state, self.factors)
-            print("Dr:", Dr.shape()[0], Dr.shape()[1])
-            print(
-                "sizes",
-                self.state.cameras.size(),
-                self.state.poses.size(),
-                self.state.landmarks.size(),
-            )
+            try:
+                let np = Python.import_module("numpy")
+                let r = compute_residual_vec(self.state, self.factors)
+                let Dr = compute_residual_jac(self.state, self.factors)
 
-            let DrT_Dr = mc.matT_mat(Dr, Dr)
-            print(DrT_Dr.shape()[0])
-            let diags = mc.diag(mc.diag(DrT_Dr))
-            let DrT_b = mc.multiply(-1.0, mc.matT_vec(Dr, r))
+                let Drpy = mc.tensor2np(Dr)
+                let rpy = mc.tensor2np(r)
+                let r_norm = np.linalg.norm(rpy)
+                print("R INIT", r_norm)
 
-            var lambd: Float64 = 1e-4
-            for lambd_index in range(10):
-                print("lambda", lambd)
-                let llt = mc.llt_factor(mc.add(DrT_Dr, mc.multiply(lambd, diags)))
-                let step = llt.solve(DrT_b)
+                var step = Tensor[DType.float64](0)
+                var lambd: Float64 = 1e-6
+                for lambd_index in range(10):
+                    let diag = np.diag(np.diag(Drpy)) * lambd
+                    let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
 
-                let next_state = perturb(self.state, step)
-                let next_r = compute_residual_vec(next_state, self.factors)
-                let next_r_norm = mc.squared_norm(next_r)
-                if next_r_norm < r_norm:
-                    self.state = next_state
-                    rel_diff = mc.squared_norm(step)
-                    abs_error = next_r_norm
-                    break
-                else:
-                    lambd *= 10.0
+                    let steppy = np.linalg.solve(DrT_Drpy, -np.matmul(Drpy.T, rpy))
+                    step = mc.np2tensor1d_f64(steppy)
+
+                    let next_state = perturb(self.state, step)
+                    let next_r = compute_residual_vec(next_state, self.factors)
+                    let next_r_norm = np.linalg.norm(mc.tensor2np(next_r))
+
+                    # print("next_r_norm:", next_r_norm)
+                    if next_r_norm < r_norm:
+                        print(next_r_norm)
+                        self.state = next_state
+                        rel_diff = mc.squared_norm(step)
+                        abs_error = mc.pyfloat[DType.float64](next_r_norm)
+                        break
+                    else:
+                        # print("try again", lambd, r_norm - next_r_norm)
+                        lambd *= 10.0
+
+            except e:
+                print("Failed to import numpy")
+                print(e)
 
             if rel_diff < rel_tol or abs_error < abs_tol:
                 break

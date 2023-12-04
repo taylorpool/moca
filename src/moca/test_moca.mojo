@@ -1,7 +1,7 @@
 import src.moca as mc
 from python import Python
 from testing import assert_almost_equal, assert_equal
-from src.util import np2tensor2d_f64, assert_almost_equal_tensor
+from src.util import assert_almost_equal_tensor
 from utils.index import Index
 import random
 
@@ -622,10 +622,10 @@ def test_inv3() -> NoneType:
     print("# test_inv3")
     np = Python.import_module("numpy")
     xnp = np.random.rand(3, 3)
-    x = np2tensor2d_f64(xnp)
+    x = mc.np2tensor2d_f64(xnp)
 
     xnpinv = np.linalg.inv(xnp)
-    xinv_des = np2tensor2d_f64(xnpinv)
+    xinv_des = mc.np2tensor2d_f64(xnpinv)
     xinv = mc.inv3(x)
 
     assert_almost_equal_tensor[DType.float64, 16](xinv, xinv_des)

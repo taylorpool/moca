@@ -4,6 +4,7 @@ import numpy as np
 from tqdm import tqdm
 import pycolmap
 from pathlib import Path
+import collections
 
 
 @dataclass
@@ -94,7 +95,11 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     # ------------------------- Get all cameras ------------------------- #
     result_cameras = cur.execute("SELECT camera_id, params FROM cameras").fetchall()
     for id, params in result_cameras:
-        cal = np.frombuffer(params, np.float64)
+        cal = np.frombuffer(params, np.float64).copy()
+        if cal[2] == 0:
+            cal[2] = cal[0] / 2
+        if cal[3] == 0:
+            cal[3] = cal[1] / 2
         cameras.append(PinholeCamera(id - 1, *cal))
 
     # ------------------------- Load all keypoints ------------------------- #
@@ -148,6 +153,8 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
             if seen_in_1 and seen_in_2:
                 idx_lm2 = factors[seen[tuple2]].id_lm
                 idx_lm1 = factors[seen[tuple1]].id_lm
+                idx_lm = idx_lm1
+
                 # Relabel if they're not the same
                 if idx_lm1 != idx_lm2:
                     idxs_factors = lm_lookup.pop(idx_lm2)
@@ -207,6 +214,20 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
 
         pair_factor_list.append(factor_idx_list)
 
+        # lm_all = []
+        # lm_set = set()
+        # for i in factor_idx_list:
+        #     lm = factors[i].id_lm
+        #     lm_all.append(lm)
+        #     lm_set.add(lm)
+        # # print(len(lm_all), len(lm_set) * 2)
+        # repeats = [
+        #     item for item, count in collections.Counter(lm_all).items() if count > 2
+        # ]
+        # print(match.id1, match.id2)
+        # if len(repeats) > 0:
+        #     print(f"Bad loop! {len(repeats)}")
+
     # Reorganize a bit so there's no holes!
     for idx_lm in idx_lm_removed:
         idx_to_rm = idx_lm_count - 1
@@ -231,4 +252,4 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
 
 
 if __name__ == "__main__":
-    frontend("trex")
+    frontend("trex8")

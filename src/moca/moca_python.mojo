@@ -5,12 +5,14 @@ from python import Python
 
 # ------------------------- Conversions ------------------------- #
 
+
 fn pyfloat[type: DType](i: PythonObject) -> SIMD[type, 1]:
     return i.to_float64().cast[type]()
 
 
 fn pyint(i: PythonObject) -> Int:
     return i.__index__()
+
 
 fn np2simd[
     n: Int, type: DType = DType.float64
@@ -46,6 +48,7 @@ fn np2tensor2d[
 fn np2tensor2d_i64(npin: PythonObject) -> Tensor[DType.int64]:
     try:
         let np = Python.import_module("numpy")
+        np.set_printoptions(5, None, 1000, 1000, True)
 
         let rows = npin.shape[0].__index__()
         let cols = npin.shape[1].__index__()

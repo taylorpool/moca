@@ -14,7 +14,7 @@ struct NextPair:
 
 fn truncate(t: Tensor[DType.int64]) -> Tensor[DType.int64]:
     """Helper to remove -1 at end of all index tensors."""
-    var idx = 0
+    var idx = t.dim(0)
     for i in range(t.dim(0)):
         if t[i] == -1:
             idx = i

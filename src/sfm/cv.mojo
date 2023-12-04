@@ -336,7 +336,7 @@ fn findEssentialMatRANSAC[
     K1: PinholeCamera,
     K2: PinholeCamera,
 ) -> RANSACResult:
-    let result = findFundamentalMatRANSAC[threshold, max_iter](kp1, kp2)
+    var result = findFundamentalMatRANSAC[threshold, max_iter](kp1, kp2)
     result.model = mc.mat_mat(
         mc.matT_mat(K2.as_mat(True), result.model), K1.as_mat(True)
     )

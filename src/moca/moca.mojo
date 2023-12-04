@@ -528,9 +528,9 @@ fn copy_col[type: DType](A: Tensor[type], col: Int, start_row: Int = 0) -> Tenso
     return x
 
 fn copy[type: DType](src: Tensor[type], inout dest: Tensor[type], dest_start_row: Int, dest_start_col: Int):
-    for i in range(dest_start_row, src.shape()[0]+dest_start_row):
-        for j in range(dest_start_col, src.shape()[1]+dest_start_col):
-            dest[Index(i,j)] = src[i,j]
+    for i in range(0, src.shape()[0]):
+        for j in range(0, src.shape()[1]):
+            dest[Index(i + dest_start_row,j + dest_start_col)] = src[i,j]
 
 
 fn copy[type: DType](src: Tensor[type], inout dest: Tensor[type], dest_start_index: Int):
