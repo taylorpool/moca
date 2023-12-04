@@ -8,6 +8,11 @@ struct Landmark:
 
     @always_inline
     @staticmethod
+    fn dim() -> Int:
+        return 3
+
+    @always_inline
+    @staticmethod
     fn identity() -> Self:
         return Self {val: mc.Vector3d(0, 0, 0, 0)}
 

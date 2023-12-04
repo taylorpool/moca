@@ -14,6 +14,11 @@ struct ProjectionFactor:
     var id_lm: Int64
     var measured: SIMD[DType.float64, 2]
 
+    @always_inline
+    @staticmethod
+    fn dim() -> Int:
+        return 2
+
     fn residual(self, K: PinholeCamera, T: SE3, p: Landmark) -> SIMD[DType.float64, 2]:
         return K.project(T * p.val) - self.measured
 

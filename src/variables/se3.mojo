@@ -1,6 +1,7 @@
 from utils.index import Index
 import src.moca as mc
 from src.variables import SO3
+from math import sqrt, sin, cos
 
 
 fn cross(a: mc.Vector3d, b: mc.Vector4d) -> mc.Vector3d:
@@ -30,6 +31,11 @@ struct SE3:
 
     @always_inline
     @staticmethod
+    fn dim() -> Int:
+        return 6
+
+    @always_inline
+    @staticmethod
     fn identity() -> Self:
         return Self(SO3(0, 0, 0, 1), mc.Vector3d(0, 0, 0))
 
@@ -54,6 +60,18 @@ struct SE3:
             t = (omega_cross_v - R * omega_cross_v + t_parallel) / theta2
 
         return Self(R, t)
+
+    # @always_inline
+    # @staticmethod
+    # fn logmap(x: Self) -> mc.Vector6d:
+    #     let xi = mc.Vector6d()
+    #     let w = SO3.logmap(x.rot)
+    #     let theta2 = (w*w).reduce_add()
+    #     let theta = sqrt(theta2)
+    #     let theta3 = theta2*theta
+    #     let M = SO3.skew(w)
+    #     let V = (1-cos(theta))/(theta2) + (theta - sin(theta))/(theta3)
+        
 
     @always_inline
     fn as_mat(self) -> Tensor[DType.float64]:
