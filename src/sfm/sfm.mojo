@@ -75,12 +75,19 @@ alias landmark_dim = 3
 alias factor_dim = 2
 
 
+fn copy_vector[type: AnyType](src: DynamicVector[type]) -> DynamicVector[type]:
+    var dst = DynamicVector[type](src.__len__())
+    for i in range(src.__len__()):
+        dst.push_back(src[i])
+    return dst
+
+
 @value
 struct PartiallyActiveVector[type: AnyType]:
     var dim: Int
-    var values: DynamicVector[type]
-    var active_to_id: IntSet
-    var id_to_active: DynamicVector[Int]
+    var values: DynamicVector[type]  # indexed by id
+    var active_to_id: IntSet  # maps active_idx to id
+    var id_to_active: DynamicVector[Int]  # maps id to active_idx
 
     fn __init__(inout self, dim: Int):
         self.dim = dim
@@ -90,14 +97,16 @@ struct PartiallyActiveVector[type: AnyType]:
 
     fn __copyinit__(inout self, other: Self):
         self.dim = other.dim
-        self.values.__copyinit__(other.values)
+        self.values = copy_vector(other.values)
         self.active_to_id.__copyinit__(other.active_to_id)
-        self.id_to_active.__copyinit__(other.id_to_active)
+        self.id_to_active = copy_vector(other.id_to_active)
 
     fn resize(inout self, size: Int):
         self.values = DynamicVector[type](size)
         self.active_to_id = IntSet(size)
         self.id_to_active = DynamicVector[Int](size)
+        for i in range(size):
+            self.id_to_active.push_back(i)
 
     fn offset(self) -> Int:
         return self.dim * self.active_to_id.size()
@@ -155,18 +164,12 @@ fn compute_residual_vec(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
             ),
         )
 
-    # let rot_diff = SO3.logmap(state.poses.values[0].rot)
-    # let trans_diff = state.poses.values[0].trans
-    # for i in range(3):
-    #     residual[factors.offset() + i] = rot_diff[i]
-    #     residual[factors.offset() + 3 + i] = trans_diff[i]
-
     return residual
 
 
 fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.float64]:
     let camera_offset = state.cameras.offset()
-    let pose_offset = camera_offset + state.poses.offset()
+    let pose_offset = camera_offset + (state.poses.offset() - 6)
     let landmark_offset = pose_offset + state.landmarks.offset()
 
     var Dr = Tensor[DType.float64](factor_dim * factors.size(), landmark_offset)
@@ -195,19 +198,14 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
             camera_dim * state.cameras.id_to_active[factor.id_cam.__int__()],
         )
 
-        let pose_col = pose_dim * state.poses.id_to_active[
-            factor.id_pose.__int__()
-        ] + camera_offset
-        # if factor.id_pose != state.poses.active_to_id.elements[0]:
-        mc.copy(
-            H_T,
-            Dr,
-            row,
-            pose_dim * state.poses.id_to_active[factor.id_pose.__int__()]
-            + camera_offset,
-        )
-        # else:
-        #     mc.set_zero(Dr, row, pose_col, row + 1, pose_col + pose_dim)
+        if factor.id_pose != state.poses.active_to_id.elements[0]:
+            mc.copy(
+                H_T,
+                Dr,
+                row,
+                pose_dim * (state.poses.id_to_active[factor.id_pose.__int__()] - 1)
+                + camera_offset,
+            )
 
         mc.copy(
             H_p,
@@ -217,9 +215,6 @@ fn compute_residual_jac(state: SfMState, factors: SfMFactors) -> Tensor[DType.fl
             + pose_offset,
         )
 
-    # let I = mc.eye(6)
-    # mc.copy(I, Dr, factor_dim * factors.size(), camera_offset)
-
     return Dr
 
 
@@ -227,7 +222,7 @@ fn perturb(borrowed state: SfMState, perturbation: Tensor[DType.float64]) -> SfM
     var perturbed_state: SfMState
     perturbed_state.__copyinit__(state)
     let camera_offset = state.cameras.offset()
-    let pose_offset = state.poses.offset() + camera_offset
+    let pose_offset = (state.poses.offset() - 6) + camera_offset
 
     for i in range(state.cameras.size()):
         let id = state.cameras.active_to_id.elements[i]
@@ -243,9 +238,9 @@ fn perturb(borrowed state: SfMState, perturbation: Tensor[DType.float64]) -> SfM
             perturbation_index + 3
         ]
 
-    for i in range(state.poses.size()):
+    for i in range(1, state.poses.size()):
         let id = state.poses.active_to_id.elements[i]
-        let twist_index = pose_dim * i + camera_offset
+        let twist_index = pose_dim * (i - 1) + camera_offset
         let twist = mc.Vector6d(
             perturbation[twist_index],
             perturbation[twist_index + 1],
@@ -344,6 +339,7 @@ struct SfM:
     fn register_first_pair(inout self):
         # Get first image data
         let next_pair = self.scene.get_first_pair()
+        print("Registering pair:", next_pair.id1, next_pair.id2)
 
         var cam_pair = (0, 0)
         var kp1 = Tensor[DType.float64](0)
@@ -385,7 +381,8 @@ struct SfM:
             kp2,
         )
 
-        pose2.rot = SO3.identity()
+        # TODO: Not great, but it gets us by
+        # pose2.rot = SO3.identity()
 
         # Insert everything into graph
         self.state.poses.add(next_pair.id1)
@@ -396,14 +393,10 @@ struct SfM:
         self.state.cameras.add(cam1_id)
         self.state.cameras.add(cam2_id)
 
-        print(pose2.trans)
-        print(pose2.rot.as_mat())
-
         for i in range(lm_idx.dim(0)):
             let idx = lm_idx[Index(i)].__int__()
             self.state.landmarks.add(idx)
             self.state.landmarks.values[idx] = lms[i]
-            # print(lms[i].val)
 
         for i in range(next_pair.factor_idx.dim(0)):
             self.factors.add(next_pair.factor_idx[Index(i)].__int__())
@@ -526,34 +519,50 @@ struct SfM:
                 let Drpy = mc.tensor2np(Dr)
                 let rpy = mc.tensor2np(r)
                 let r_norm = np.linalg.norm(rpy)
-                print("R INIT", r_norm)
+                print("---R INIT", r_norm)
 
                 var step = Tensor[DType.float64](0)
-                var lambd: Float64 = 1e-6
+                var lambd: Float64 = 1e-4
                 for lambd_index in range(10):
-                    let diag = np.diag(np.diag(Drpy)) * lambd
-                    let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
+                    try:
+                        let diag = np.diag(np.diag(Drpy)) * lambd
+                        let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
 
-                    let steppy = np.linalg.solve(DrT_Drpy, -np.matmul(Drpy.T, rpy))
-                    step = mc.np2tensor1d_f64(steppy)
+                        let steppy = np.linalg.solve(DrT_Drpy, -np.matmul(Drpy.T, rpy))
+                        step = mc.np2tensor1d_f64(steppy)
+                    except e:
+                        print("---Failed to solve!")
+                        print(e)
+                        lambd *= 10.0
+                        continue
 
+                    # print("Perturbing")
+                    # print(self.state.landmarks.size())
+                    # print(self.state.poses.size())
                     let next_state = perturb(self.state, step)
+                    # print(next_state.landmarks.size())
+                    # print(next_state.poses.size())
                     let next_r = compute_residual_vec(next_state, self.factors)
                     let next_r_norm = np.linalg.norm(mc.tensor2np(next_r))
 
                     # print("next_r_norm:", next_r_norm)
                     if next_r_norm < r_norm:
-                        print(next_r_norm)
+                        print("---ACCEPTED", next_r_norm)
                         self.state = next_state
                         rel_diff = mc.squared_norm(step)
                         abs_error = mc.pyfloat[DType.float64](next_r_norm)
+                        print("---DONE ACCEPTING")
                         break
                     else:
                         # print("try again", lambd, r_norm - next_r_norm)
                         lambd *= 10.0
 
+                if lambd == 10**6:
+                    print("---Failed to find a good step size!")
+                    break
+
             except e:
-                print("Failed to import numpy")
+                print("---Failed to import numpy")
                 print(e)
 
             if rel_diff < rel_tol or abs_error < abs_tol:
