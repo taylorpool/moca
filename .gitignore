@@ -4,3 +4,6 @@ trex
 __pycache__
 .vscode
 .mypy_cache
+*.png
+*.npy
+*.db
