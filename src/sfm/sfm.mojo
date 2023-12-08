@@ -106,14 +106,15 @@ struct PartiallyActiveVector[type: AnyType]:
         self.active_to_id = IntSet(size)
         self.id_to_active = DynamicVector[Int](size)
         for i in range(size):
-            self.id_to_active.push_back(i)
+            self.id_to_active.push_back(-1)
 
     fn offset(self) -> Int:
         return self.dim * self.active_to_id.size()
 
     fn add(inout self, id: Int):
-        self.active_to_id.add(id)
-        self.id_to_active[id] = self.active_to_id.size() - 1
+        if not self.active_to_id.contains(id):
+            self.active_to_id.add(id)
+            self.id_to_active[id] = self.active_to_id.size() - 1
 
     fn size(self) -> Int:
         return self.active_to_id.size()
@@ -301,7 +302,7 @@ struct SfM:
             )
             self.state.cameras.values.push_back(PinholeCamera(cal))
 
-        for _ in range(num_cam):
+        for _ in range(num_poses):
             self.state.poses.values.push_back(SE3.identity())
 
         for _ in range(num_lm):
@@ -328,7 +329,7 @@ struct SfM:
             id_pairs.add(Tuple(id1, id2), i)
 
         # make lookup for pairs & count number of factors for each pose
-        var lms_per_pose = Tensor[DType.uint64](num_cam)
+        var lms_per_pose = Tensor[DType.uint64](num_poses)
 
         for i in range(self.factors.values.__len__()):
             let f = self.factors.values[i]
@@ -365,7 +366,7 @@ struct SfM:
             self.state.cameras.values[cam2_id],
         )
         let pose1 = SE3.identity()
-        var pose2 = cv.recoverPose(
+        let pose2 = cv.recoverPose(
             E,
             kp1,
             kp2,
@@ -410,28 +411,31 @@ struct SfM:
 
         # Find which factors have / haven't been added
         var new_lm_factors = IntSet(self.factors.total())  # for PnP
-        var old_factors = IntSet(self.factors.total())  # for Triangulation
+        var new_pose_factors = IntSet(self.factors.total())  # for Triangulation
 
         for i in range(next_pair.factor_idx.dim(0)):
-            let id = next_pair.factor_idx[Index(i)].__int__()
-            let cam_id = self.factors[id].id_cam.__int__()
-            let lm_id = self.factors[id].id_lm.__int__()
-            if self.factors.contains(id):
-                old_factors.add(id)
+            let factor_id = next_pair.factor_idx[Index(i)].__int__()
+            let cam_id = self.factors[factor_id].id_cam.__int__()
+            let lm_id = self.factors[factor_id].id_lm.__int__()
+            let pose_id = self.factors[factor_id].id_pose.__int__()
+            # Grab any factors with landmarks that haven't been added yet
             if not self.state.landmarks.contains(lm_id):
-                new_lm_factors.add(id)
+                new_lm_factors.add(factor_id)
+            # Grab any factors with poses that haven't been added yet, but landmarks have
+            elif not self.state.poses.contains(pose_id):
+                new_pose_factors.add(factor_id)
 
-            self.factors.add(id)
+            self.factors.add(factor_id)
             self.state.cameras.add(cam_id)
 
-        if old_factors.size() < 30:
+        if new_pose_factors.size() < 30:
             print("Not enough new factors to register!")
 
         # Add in any new poses
         if not self.state.poses.contains(next_pair.id1):
-            self._estimate_init_pose(next_pair.id1, old_factors)
+            self._estimate_init_pose(next_pair.id1, new_pose_factors)
         if not self.state.poses.contains(next_pair.id2):
-            self._estimate_init_pose(next_pair.id2, old_factors)
+            self._estimate_init_pose(next_pair.id2, new_pose_factors)
         # Add in any new landmarks
         if new_lm_factors.size() > 0:
             self._estimate_init_landmarks(new_lm_factors)
@@ -536,12 +540,7 @@ struct SfM:
                         lambd *= 10.0
                         continue
 
-                    # print("Perturbing")
-                    # print(self.state.landmarks.size())
-                    # print(self.state.poses.size())
                     let next_state = perturb(self.state, step)
-                    # print(next_state.landmarks.size())
-                    # print(next_state.poses.size())
                     let next_r = compute_residual_vec(next_state, self.factors)
                     let next_r_norm = np.linalg.norm(mc.tensor2np(next_r))
 
@@ -551,7 +550,6 @@ struct SfM:
                         self.state = next_state
                         rel_diff = mc.squared_norm(step)
                         abs_error = mc.pyfloat[DType.float64](next_r_norm)
-                        print("---DONE ACCEPTING")
                         break
                     else:
                         # print("try again", lambd, r_norm - next_r_norm)

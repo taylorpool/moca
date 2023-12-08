@@ -126,6 +126,9 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
         id_img2 = (pair_id % 2147483647) - 1
         id_img1 = int((pair_id - id_img2) / 2147483647) - 1
 
+        if match_buffer == None:
+            continue
+
         m = np.frombuffer(match_buffer, np.uint32).reshape((rows, cols))
         matches.append(Match(id_img1, id_img2, m))
 
@@ -252,4 +255,4 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
 
 
 if __name__ == "__main__":
-    frontend("trex8")
+    scene = frontend("moose")

@@ -78,9 +78,27 @@ fn extractRt(K: PinholeCamera, P: Tensor[DType.float64]) -> SE3:
 fn PnP(
     K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
 ) -> SE3:
+    # TODO: Fix in Mojo -> Can't compute P and then extract R and t, won't be up to scale
     # Get projection matrix
-    let P = PnP(pts2d, pts3d)
-    return extractRt(K, P)
+    # let P = PnP(pts2d, pts3d)
+    # return extractRt(K, P)
+    try:
+        let np = Python.import_module("numpy")
+        let cv = Python.import_module("cv2")
+        let K_np = mc.tensor2np(K.as_mat(True))
+        let pts2d_np = mc.tensor2np(pts2d)
+        let pts3d_np = mc.tensor2np(pts3d)
+
+        let result = cv.solvePnP(
+            pts3d_np, pts2d_np, K_np, None, None, None, False, cv.SOLVEPNP_ITERATIVE
+        )
+        let rvec = mc.np2simd[4](result[1])
+        let tvec = mc.np2simd[4](result[2])
+        return SE3(SO3.expmap(rvec), tvec)
+
+    except e:
+        print(e)
+        return SE3.identity()
 
 
 fn triangulate(
