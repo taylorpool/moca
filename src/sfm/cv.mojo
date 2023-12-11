@@ -83,7 +83,6 @@ fn PnP(
     # let P = PnP(pts2d, pts3d)
     # return extractRt(K, P)
     try:
-        let np = Python.import_module("numpy")
         let cv = Python.import_module("cv2")
         let K_np = mc.tensor2np(K.as_mat(True))
         let pts2d_np = mc.tensor2np(pts2d)
@@ -338,6 +337,7 @@ fn findFundamentalMatRANSAC[
         let p1 = mc.Vector3d(kp1[i, 0], kp1[i, 1], 1.0)
         let p2 = mc.Vector3d(kp2[i, 0], kp2[i, 1], 1.0)
         var e = mc.vecT_mat_vec(p2, F, p1)
+        e = e * e
         let Fx1 = mc.mat_vec(F, p1)
         let FTx2 = mc.matT_vec(F, p2)
         e /= Fx1[0] * Fx1[0] + Fx1[1] * Fx1[1] + FTx2[0] * FTx2[0] + FTx2[1] * FTx2[1]
@@ -392,3 +392,62 @@ fn PnPRANSAC[
     result.pose = extractRt(K, result.model)
 
     return result
+
+
+fn findEssentialMatCV(
+    kp1: Tensor[DType.float64],
+    kp2: Tensor[DType.float64],
+    K1: PinholeCamera,
+    K2: PinholeCamera,
+) -> RANSACResult:
+    try:
+        let n = kp1.dim(0)
+        let cv2 = Python.import_module("cv2")
+        let E = cv2.findEssentialMat(
+            mc.tensor2np(kp1),
+            mc.tensor2np(kp2),
+            mc.tensor2np(K1.as_mat(True)),
+            cv2.RANSAC,
+        )
+        let num_inliers = E[1].sum().__index__()
+        let inliers = mc.np2tensor[DType.bool](E[1])
+        var result = RANSACResult(n, mc.np2tensor2d_f64(E[0]))
+        result.num_inliers = num_inliers
+        result.inliers = inliers
+        return result
+    except e:
+        print(e)
+
+    return RANSACResult()
+
+
+fn PnPCV(
+    K: PinholeCamera, pts2d: Tensor[DType.float64], pts3d: Tensor[DType.float64]
+) -> RANSACResult:
+    try:
+        let n = pts2d.dim(0)
+        let cv = Python.import_module("cv2")
+        let K_np = mc.tensor2np(K.as_mat(True))
+        let pts2d_np = mc.tensor2np(pts2d)
+        let pts3d_np = mc.tensor2np(pts3d)
+
+        let result = cv.solvePnPRansac(pts3d_np, pts2d_np, K_np, None)
+        let rvec = mc.np2simd[4](result[1])
+        let tvec = mc.np2simd[4](result[2])
+        let pose = SE3(SO3.expmap(rvec), tvec)
+
+        var inliers = Tensor[DType.bool](n)
+        let inliers_result = result[3].flatten()
+        var num_inliers = 0
+        for i in range(inliers_result.shape[0]):
+            inliers[inliers_result[i].__index__()] = True
+            num_inliers += 1
+
+        var ransac = RANSACResult(n, pose)
+        ransac.num_inliers = num_inliers
+        ransac.inliers = inliers
+        return ransac
+
+    except e:
+        print(e)
+        return RANSACResult()

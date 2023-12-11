@@ -84,8 +84,13 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     if file_db.exists():
         print("COLMAP database already exists, loading it...")
     else:
-        pycolmap.extract_features(file_db, dir_img)
-        pycolmap.match_exhaustive(file_db)
+        pycolmap.extract_features(
+            file_db,
+            dir_img,
+            camera_mode=pycolmap.CameraMode.PER_FOLDER,
+            verbose=False,
+        )
+        pycolmap.match_exhaustive(file_db, verbose=False)
 
     cur = sqlite3.connect(file_db).cursor()
 

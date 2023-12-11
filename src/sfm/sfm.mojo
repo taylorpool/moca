@@ -336,6 +336,10 @@ struct SfM:
             lms_per_pose[f.id_pose.__int__()] += 1
 
         self.scene.setup(id_pairs, indices_pair, lms_per_pose)
+        print()
+
+    fn pairs_left(self) -> Int:
+        return self.scene.id_pairs.size()
 
     fn register_first_pair(inout self):
         # Get first image data
@@ -359,12 +363,13 @@ struct SfM:
         let cam2_id = cam_pair.get[1, Int]()
 
         # Estimate everything
-        let E = cv.findEssentialMat(
+        let result = cv.findEssentialMatCV(
             kp1,
             kp2,
             self.state.cameras.values[cam1_id],
             self.state.cameras.values[cam2_id],
         )
+        let E = result.model
         let pose1 = SE3.identity()
         let pose2 = cv.recoverPose(
             E,
@@ -382,10 +387,9 @@ struct SfM:
             kp2,
         )
 
-        # TODO: Not great, but it gets us by
-        # pose2.rot = SO3.identity()
+        print("---E RANSAC:", result.num_inliers, "/", kp1.dim(0))
 
-        # Insert everything into graph
+        # Insert all inliers into graph
         self.state.poses.add(next_pair.id1)
         self.state.poses.add(next_pair.id2)
         self.state.poses.values[next_pair.id1] = pose1
@@ -394,18 +398,18 @@ struct SfM:
         self.state.cameras.add(cam1_id)
         self.state.cameras.add(cam2_id)
 
-        for i in range(lm_idx.dim(0)):
-            let idx = lm_idx[Index(i)].__int__()
-            self.state.landmarks.add(idx)
-            self.state.landmarks.values[idx] = lms[i]
-
-        for i in range(next_pair.factor_idx.dim(0)):
-            self.factors.add(next_pair.factor_idx[Index(i)].__int__())
+        for i in range(result.inliers.dim(0)):
+            if result.inliers[Index(i)]:
+                self.factors.add(next_pair.factor_idx[Index(2 * i)].__int__())
+                self.factors.add(next_pair.factor_idx[Index(2 * i + 1)].__int__())
+                let lm_idx = lm_idx[Index(i)].__int__()
+                self.state.landmarks.add(lm_idx)
+                self.state.landmarks.values[lm_idx] = lms[i]
+        print()
 
     fn register(inout self):
         # TODO: Probably want some kind of cheriality check here after triangulation
         #  - maybe remove those factors in the _init_estimate_lm function?
-        #  - might want to do the same for outliers in the _init_estimate_pose function
         let next_pair = self.scene.get_next_pair(self.state.poses.active_to_id)
         print("Registering pair:", next_pair.id1, next_pair.id2)
 
@@ -418,19 +422,26 @@ struct SfM:
             let cam_id = self.factors[factor_id].id_cam.__int__()
             let lm_id = self.factors[factor_id].id_lm.__int__()
             let pose_id = self.factors[factor_id].id_pose.__int__()
-            # Grab any factors with landmarks that haven't been added yet
+            # Grab any factors with landmarks that haven't been added yet (-> triangulate)
             if not self.state.landmarks.contains(lm_id):
                 new_lm_factors.add(factor_id)
-            # Grab any factors with poses that haven't been added yet, but landmarks have
+            # Grab any factors with poses that haven't been added yet, but landmarks have (-> PnP)
             elif not self.state.poses.contains(pose_id):
                 new_pose_factors.add(factor_id)
+            # Anything else (There's only occasionally one that happens here, not sure what it'd be)
+            # else:
+            #     self.factors.add(factor_id)
 
-            self.factors.add(factor_id)
-            self.state.cameras.add(cam_id)
+        let has_both = self.state.poses.contains(
+            next_pair.id1
+        ) and self.state.poses.contains(next_pair.id2)
 
-        if new_pose_factors.size() < 30:
-            print("Not enough new factors to register!")
+        if not has_both and new_pose_factors.size() < 10:
+            print("Not enough new factors to register new image!")
+            print()
+            return
 
+        # These functions add their respective factors in as well
         # Add in any new poses
         if not self.state.poses.contains(next_pair.id1):
             self._estimate_init_pose(next_pair.id1, new_pose_factors)
@@ -441,6 +452,7 @@ struct SfM:
             self._estimate_init_landmarks(new_lm_factors)
         else:
             print("No new landmarks to add!")
+        print()
 
     fn _estimate_init_pose(inout self, pose_id: Int, factor_idx: IntSet):
         """Initialize a pose based on a set of factors with initialized landmarks"""
@@ -459,13 +471,22 @@ struct SfM:
             pts2d[Index(i, 1)] = factor.measured[1]
             if factor.id_pose == pose_id:
                 cam_id = factor.id_cam.__int__()
-        let pose_new = cv.PnP(self.state.cameras[cam_id], pts2d, pts3d)
-        self.state.poses[pose_id] = pose_new
+        let result = cv.PnPCV(self.state.cameras[cam_id], pts2d, pts3d)
+        self.state.poses[pose_id] = result.pose
         self.state.poses.add(pose_id)
+
+        self.state.cameras.add(cam_id)
+
+        # Handle outliers
+        for i in range(factor_idx.size()):
+            let id = factor_idx.elements[i]
+            if result.inliers[Index(i)]:
+                self.factors.add(id)
+
+        print("---PnP RANSAC:", result.num_inliers, "/", factor_idx.size())
 
     fn _estimate_init_landmarks(inout self, factor_idx: IntSet):
         """Initialize landmarks based on a set of factors with initialized poses"""
-        # TODO: This assumes factors are ordered every other... hopefully ture
         # Get data for new factors
         let num_new: Int = (factor_idx.size() / 2).__int__()
         var pts1 = Tensor[DType.float64](num_new, 2)
@@ -500,17 +521,42 @@ struct SfM:
 
         let lm_new = cv.triangulate(K1, T1, pts1, K2, T2, pts2)
 
+        var num_inliers = 0
         for i in range(num_new):
+            # outlier check
             let this_id = lm_id[i].__int__()
-            self.state.landmarks[this_id] = lm_new[i]
-            self.state.landmarks.add(this_id)
+            let lm = lm_new[i]
+            if (
+                (lm.val * lm.val).reduce_add() < 20
+                and (T1.inv() * lm.val)[2] > 0
+                and (T2.inv() * lm.val)[2] > 0
+            ):
+                self.state.landmarks[this_id] = lm_new[i]
+                self.state.landmarks.add(this_id)
+
+                let id1 = factor_idx.elements[2 * i]
+                let id2 = factor_idx.elements[2 * i + 1]
+                self.factors.add(id1)
+                self.factors.add(id2)
+
+                num_inliers += 1
+
+        print("---Triangulate Good:", num_inliers, "/", num_new)
 
     fn optimize(
         inout self,
         max_iters: Int = 20,
         abs_tol: Float64 = 1e-2,
-        rel_tol: Float64 = 1e-12,
+        rel_tol: Float64 = 1e-5,
     ):
+        print(
+            "Optimize, cameras:",
+            self.state.cameras.active_to_id.__str__(),
+            ", poses:",
+            self.state.poses.active_to_id.__str__(),
+            ", size landmarks:",
+            self.state.landmarks.size(),
+        )
         var abs_error = abs_tol + 1
         var rel_diff = rel_tol + 1
 
@@ -552,7 +598,7 @@ struct SfM:
                         abs_error = mc.pyfloat[DType.float64](next_r_norm)
                         break
                     else:
-                        # print("try again", lambd, r_norm - next_r_norm)
+                        # print("---try again", lambd, r_norm - next_r_norm)
                         lambd *= 10.0
 
                 if lambd == 10**6:
@@ -565,3 +611,5 @@ struct SfM:
 
             if rel_diff < rel_tol or abs_error < abs_tol:
                 break
+
+        print()
