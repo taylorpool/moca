@@ -394,6 +394,9 @@ fn PnPRANSAC[
     return result
 
 
+# ------------------------- Wrappers for OpenCV Implementations ------------------------- #
+
+
 fn findEssentialMatCV(
     kp1: Tensor[DType.float64],
     kp2: Tensor[DType.float64],
@@ -451,3 +454,38 @@ fn PnPCV(
     except e:
         print(e)
         return RANSACResult()
+
+
+fn recoverPoseAndECV(
+    kp1: Tensor[DType.float64],
+    kp2: Tensor[DType.float64],
+    K1: PinholeCamera,
+    K2: PinholeCamera,
+) -> RANSACResult:
+    try:
+        let n = kp1.dim(0)
+        let cv2 = Python.import_module("cv2")
+
+        let result = cv2.recoverPose(
+            mc.tensor2np(kp1),
+            mc.tensor2np(kp2),
+            mc.tensor2np(K1.as_mat(True)),
+            None,
+            mc.tensor2np(K2.as_mat(True)),
+            None,
+        )
+
+        let num_inliers = result[0].__index__()
+        let inliers = mc.np2tensor[DType.bool](result[4])
+        let pose = SE3(
+            SO3(mc.np2tensor2d_f64(result[2])),
+            mc.np2simd[4](result[3].flatten()),
+        )
+        var ransac = RANSACResult(n, pose)
+        ransac.num_inliers = num_inliers
+        ransac.inliers = inliers
+        return ransac
+    except e:
+        print(e)
+
+    return RANSACResult()

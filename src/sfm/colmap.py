@@ -82,7 +82,7 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     if force and file_db.exists():
         file_db.unlink()
     if file_db.exists():
-        print("COLMAP database already exists, loading it...")
+        print("---COLMAP database already exists, loading it...")
     else:
         pycolmap.extract_features(
             file_db,

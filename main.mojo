@@ -4,24 +4,8 @@ from python import Python
 from src.variables import Landmark
 
 
-fn main() raises:
-    let dir = Path("trex8")
-    var sfm = SfM(dir)
-
-    sfm.frontend()
-
-    sfm.register_first_pair()
-    # sfm.optimize(max_iters=10)
-
-    while sfm.pairs_left() > 0:
-        sfm.register()
-        sfm.optimize(max_iters=5)
-
-    sfm.optimize(max_iters=40)
-
-    # Save data
-    Python.add_to_path(".")
-    let plot3d = Python.import_module("plot").plot3d
+fn save(filename: String, sfm: SfM) raises:
+    # Save data to npz file
     let np = Python.import_module("numpy")
     let pts = Python.evaluate("[]")
     let poses = Python.evaluate("[]")
@@ -45,6 +29,41 @@ fn main() raises:
             ]
         )
 
-    _ = np.savez(dir.path + ".npz", pts, poses)
+    _ = np.savez(filename, pts, poses)
 
-    # _ = plot3d(dir.path + ".png")
+
+fn main() raises:
+    let dir = Path("moose")
+    var sfm = SfM(dir)
+
+    sfm.frontend()
+
+    sfm.register_first_pair()
+    sfm.optimize(max_iters=5)
+
+    var i = 1
+    let i_max = 100
+    while sfm.pairs_left() > 0 and i < i_max:
+        print(
+            "#----------------------------- Pair",
+            i,
+            ", Pairs left",
+            sfm.pairs_left(),
+            "-----------------------------#",
+        )
+
+        sfm.register()
+        sfm.optimize(max_iters=5, grad_tol=5e1)
+
+        if i % 10 == 0:
+            save(dir.path + ".npz", sfm)
+            print("Saved!\n")
+        i += 1
+
+    print(
+        "#----------------------------- Final Optimization"
+        " -----------------------------#"
+    )
+    sfm.lambd = 1e-4
+    sfm.optimize(max_iters=40)
+    save(dir.path + ".npz", sfm)

@@ -268,15 +268,18 @@ struct SfM:
 
     var state: SfMState
     var factors: SfMFactors
+    var lambd: Float64
 
     fn __init__(inout self, dir_images: Path):
         self.dir_images = dir_images
         self.scene = SceneGraph()
         self.state = SfMState()
         self.factors = SfMFactors(factor_dim)
+        self.lambd = 1e-4
 
     fn frontend(inout self, force: Bool = False) raises:
         """Run COLMAP as frontend to get all factors."""
+        print("Running frontend")
 
         Python.add_to_path("src/sfm/")
         let colmap = Python.import_module("colmap")
@@ -363,21 +366,14 @@ struct SfM:
         let cam2_id = cam_pair.get[1, Int]()
 
         # Estimate everything
-        let result = cv.findEssentialMatCV(
+        let result = cv.recoverPoseAndECV(
             kp1,
             kp2,
             self.state.cameras.values[cam1_id],
             self.state.cameras.values[cam2_id],
         )
-        let E = result.model
         let pose1 = SE3.identity()
-        let pose2 = cv.recoverPose(
-            E,
-            kp1,
-            kp2,
-            self.state.cameras.values[cam1_id],
-            self.state.cameras.values[cam2_id],
-        )
+        let pose2 = result.pose
         let lms = cv.triangulate(
             self.state.cameras.values[cam1_id],
             pose1,
@@ -408,8 +404,6 @@ struct SfM:
         print()
 
     fn register(inout self):
-        # TODO: Probably want some kind of cheriality check here after triangulation
-        #  - maybe remove those factors in the _init_estimate_lm function?
         let next_pair = self.scene.get_next_pair(self.state.poses.active_to_id)
         print("Registering pair:", next_pair.id1, next_pair.id2)
 
@@ -527,9 +521,9 @@ struct SfM:
             let this_id = lm_id[i].__int__()
             let lm = lm_new[i]
             if (
-                (lm.val * lm.val).reduce_add() < 20
-                and (T1.inv() * lm.val)[2] > 0
+                (T1.inv() * lm.val)[2] > 0
                 and (T2.inv() * lm.val)[2] > 0
+                # and (lm.val * lm.val).reduce_add() < 100
             ):
                 self.state.landmarks[this_id] = lm_new[i]
                 self.state.landmarks.add(this_id)
@@ -548,17 +542,22 @@ struct SfM:
         max_iters: Int = 20,
         abs_tol: Float64 = 1e-2,
         rel_tol: Float64 = 1e-5,
+        grad_tol: Float64 = 1e0,
     ):
         print(
-            "Optimize, cameras:",
+            "Optimize\n -> cameras:",
             self.state.cameras.active_to_id.__str__(),
-            ", poses:",
-            self.state.poses.active_to_id.__str__(),
-            ", size landmarks:",
+            "\n -> poses:",
+            self.state.poses.size(),
+            "\n -> landmarks:",
             self.state.landmarks.size(),
+            "\n -> factors:",
+            self.factors.size(),
         )
         var abs_error = abs_tol + 1
         var rel_diff = rel_tol + 1
+        if self.lambd >= 1e6:
+            self.lambd = 1
 
         for iter in range(max_iters):
             try:
@@ -571,19 +570,24 @@ struct SfM:
                 let r_norm = np.linalg.norm(rpy)
                 print("---R INIT", r_norm)
 
+                let DrT_rpy = -np.matmul(Drpy.T, rpy)
+                let grad_norm = np.linalg.norm(DrT_rpy) / rpy.shape[0]
+                if grad_norm < grad_tol:
+                    print("---Finishing due to grad norm", grad_norm)
+                    break
+
                 var step = Tensor[DType.float64](0)
-                var lambd: Float64 = 1e-4
-                for lambd_index in range(10):
+                while self.lambd < 10**6:
                     try:
-                        let diag = np.diag(np.diag(Drpy)) * lambd
+                        let diag = np.diag(np.diag(Drpy)) * self.lambd
                         let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
 
-                        let steppy = np.linalg.solve(DrT_Drpy, -np.matmul(Drpy.T, rpy))
+                        let steppy = np.linalg.solve(DrT_Drpy, DrT_rpy)
                         step = mc.np2tensor1d_f64(steppy)
                     except e:
                         print("---Failed to solve!")
                         print(e)
-                        lambd *= 10.0
+                        self.lambd *= 10.0
                         continue
 
                     let next_state = perturb(self.state, step)
@@ -592,16 +596,17 @@ struct SfM:
 
                     # print("next_r_norm:", next_r_norm)
                     if next_r_norm < r_norm:
-                        print("---ACCEPTED", next_r_norm)
+                        print("---STEPPED", next_r_norm, ", lambda: ", self.lambd)
                         self.state = next_state
                         rel_diff = mc.squared_norm(step)
                         abs_error = mc.pyfloat[DType.float64](next_r_norm)
+                        self.lambd /= 10.0
                         break
                     else:
-                        # print("---try again", lambd, r_norm - next_r_norm)
-                        lambd *= 10.0
+                        # print("---try again", self.lambd, r_norm - next_r_norm)
+                        self.lambd *= 10.0
 
-                if lambd == 10**6:
+                if self.lambd >= 10**6:
                     print("---Failed to find a good step size!")
                     break
 
@@ -609,7 +614,12 @@ struct SfM:
                 print("---Failed to import numpy")
                 print(e)
 
-            if rel_diff < rel_tol or abs_error < abs_tol:
+            if rel_diff < rel_tol:
+                print("---Finishing due to small step size", rel_diff)
+                break
+
+            if abs_error < abs_tol:
+                print("---Finishing due to small error", abs_error)
                 break
 
         print()
