@@ -12,7 +12,7 @@ fn save(filename: String, sfm: SfM) raises:
     for i in range(sfm.state.landmarks.size()):
         let id = sfm.state.landmarks.active_to_id.elements[i]
         let lm = sfm.state.landmarks[id]
-        _ = pts.append([lm.val[0], lm.val[1], lm.val[2]])
+        _ = pts.append([id, lm.val[0], lm.val[1], lm.val[2]])
 
     for i in range(sfm.state.poses.size()):
         let id = sfm.state.poses.active_to_id.elements[i]
@@ -60,10 +60,10 @@ fn main() raises:
             print("Saved!\n")
         i += 1
 
-    print(
-        "#----------------------------- Final Optimization"
-        " -----------------------------#"
-    )
-    sfm.lambd = 1e-4
-    sfm.optimize(max_iters=40)
+    # print(
+    #     "#----------------------------- Final Optimization"
+    #     " -----------------------------#"
+    # )
+    # sfm.lambd = 1e-4
+    # sfm.optimize(max_iters=40)
     save(dir.path + ".npz", sfm)

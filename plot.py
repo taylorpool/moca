@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import gtsam
+from src.sfm.colmap import frontend
+import os
 
 
 def plot_pose3_on_axes(axes, pose, axis_length=0.1, scale=1):
@@ -98,11 +100,31 @@ def plot3d(filename):
 def plot_open3d(filename):
     import open3d as o3d
 
+    # Flips everything so it's easily viewable by default
+    flip = [[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]]
+
     # Load data from data.npy
     data = np.load(filename + ".npz")
-    pts = data["arr_0"]
+    allpts = data["arr_0"]
+    lm_id = allpts[:, 0]
+    pts = allpts[:, 1:]
+
     poses_vec = data["arr_1"]
     poses = []
+
+    # Load pixels from frontend
+    sfm_data = frontend(filename)
+
+    pixels = []
+    for id in lm_id:
+        factor = sfm_data.factors[sfm_data.lm_lookup[id][0]]
+        id_pose = factor.id_pose
+        file = sfm_data.filenames[id_pose]
+        img = plt.imread(os.path.join(filename, file))
+        pix = img[int(np.round(factor.v)), int(np.round(factor.u))] / 255
+        pixels.append(pix)
+
+    pixels = np.array(pixels)
 
     for p in poses_vec:
         qx, qy, qz, qw, tx, ty, tz = p
@@ -111,12 +133,15 @@ def plot_open3d(filename):
 
     pc = o3d.geometry.PointCloud()
     pc.points = o3d.utility.Vector3dVector(pts)
+    pc.colors = o3d.utility.Vector3dVector(pixels)
+    pc.transform(flip)
 
     geo = [pc]
 
     for p in poses:
         frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1)
         frame.transform(np.linalg.inv(p))
+        frame.transform(flip)
         geo.append(frame)
 
     o3d.visualization.draw_geometries(geo)

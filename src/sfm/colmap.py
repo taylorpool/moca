@@ -48,6 +48,8 @@ class SfMData:
     factors: list[ProjectionFactor]
     pair_indices: np.ndarray
     pairs: np.ndarray
+    lm_lookup: dict[int, list[int]]
+    filenames: list[str]
 
 
 # Helper to make sure things are straight when running
@@ -97,6 +99,7 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     cameras = []
     images = []
     matches = []
+    filenames = []
     # ------------------------- Get all cameras ------------------------- #
     result_cameras = cur.execute("SELECT camera_id, params FROM cameras").fetchall()
     for id, params in result_cameras:
@@ -111,15 +114,18 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     result_image_kps = cur.execute(
         "SELECT image_id, rows, cols, data FROM keypoints"
     ).fetchall()
-    result_images_ids = cur.execute("SELECT image_id, camera_id FROM images").fetchall()
+    result_images_ids = cur.execute(
+        "SELECT image_id, camera_id, name FROM images"
+    ).fetchall()
 
     for i in range(len(result_image_kps)):
         id, rows, cols, kp_buffer = result_image_kps[i]
-        id_img, id_cam = result_images_ids[i]
+        id_img, id_cam, name = result_images_ids[i]
         assert id == id_img
 
         kp = np.frombuffer(kp_buffer, np.float32).reshape((rows, cols))[:, :2]
         images.append(Image(id - 1, id_cam - 1, kp))
+        filenames.append(name)
 
     # ------------------------- Get all matches ------------------------- #
     result_matches = cur.execute(
@@ -250,12 +256,14 @@ def frontend(dir_img_str: str, force=False) -> SfMData:
     verify_lookup(factors, seen, lm_lookup)
 
     return SfMData(
-        len(images),
-        idx_lm_count,
-        cameras,
-        factors,
-        pad_to_dense(pair_factor_list, -1),
-        np.array(pairs),
+        num_poses=len(images),
+        num_lm=idx_lm_count,
+        cameras=cameras,
+        factors=factors,
+        pair_indices=pad_to_dense(pair_factor_list, -1),
+        pairs=np.array(pairs),
+        lm_lookup=lm_lookup,
+        filenames=filenames,
     )
 
 
