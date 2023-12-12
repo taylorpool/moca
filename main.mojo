@@ -42,7 +42,7 @@ fn main() raises:
     sfm.optimize(max_iters=5)
 
     var i = 1
-    let i_max = 100
+    let i_max = 100000
     while sfm.pairs_left() > 0 and i < i_max:
         print(
             "#----------------------------- Pair",
@@ -53,9 +53,9 @@ fn main() raises:
         )
 
         sfm.register()
-        sfm.optimize(max_iters=5, grad_tol=5e1)
+        sfm.optimize(max_iters=5, grad_tol=0.5, abs_tol=1e-1)
 
-        if i % 10 == 0:
+        if i % 5 == 0:
             save(dir.path + ".npz", sfm)
             print("Saved!\n")
         i += 1
@@ -64,6 +64,6 @@ fn main() raises:
     #     "#----------------------------- Final Optimization"
     #     " -----------------------------#"
     # )
-    # sfm.lambd = 1e-4
-    # sfm.optimize(max_iters=40)
+    sfm.lambd = 1e-4
+    sfm.optimize(max_iters=40)
     save(dir.path + ".npz", sfm)
