@@ -53,7 +53,7 @@ struct Dict[type_key: AnyType, type_value: DType, hash: fn (type_key) -> Int, n:
         self.keys[idx] = self.keys[self.keys.__len__() - 1]
         let blank = self.keys.pop_back()
 
-    fn size(inout self) -> Int:
+    fn size(self) -> Int:
         return self.keys.__len__()
 
     fn __copyinit__(inout self, existing: Self):

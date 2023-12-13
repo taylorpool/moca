@@ -106,14 +106,15 @@ struct PartiallyActiveVector[type: AnyType]:
         self.active_to_id = IntSet(size)
         self.id_to_active = DynamicVector[Int](size)
         for i in range(size):
-            self.id_to_active.push_back(i)
+            self.id_to_active.push_back(-1)
 
     fn offset(self) -> Int:
         return self.dim * self.active_to_id.size()
 
     fn add(inout self, id: Int):
-        self.active_to_id.add(id)
-        self.id_to_active[id] = self.active_to_id.size() - 1
+        if not self.active_to_id.contains(id):
+            self.active_to_id.add(id)
+            self.id_to_active[id] = self.active_to_id.size() - 1
 
     fn size(self) -> Int:
         return self.active_to_id.size()
@@ -267,15 +268,18 @@ struct SfM:
 
     var state: SfMState
     var factors: SfMFactors
+    var lambd: Float64
 
     fn __init__(inout self, dir_images: Path):
         self.dir_images = dir_images
         self.scene = SceneGraph()
         self.state = SfMState()
         self.factors = SfMFactors(factor_dim)
+        self.lambd = 1e-4
 
     fn frontend(inout self, force: Bool = False) raises:
         """Run COLMAP as frontend to get all factors."""
+        print("Running frontend")
 
         Python.add_to_path("src/sfm/")
         let colmap = Python.import_module("colmap")
@@ -301,7 +305,7 @@ struct SfM:
             )
             self.state.cameras.values.push_back(PinholeCamera(cal))
 
-        for _ in range(num_cam):
+        for _ in range(num_poses):
             self.state.poses.values.push_back(SE3.identity())
 
         for _ in range(num_lm):
@@ -328,13 +332,17 @@ struct SfM:
             id_pairs.add(Tuple(id1, id2), i)
 
         # make lookup for pairs & count number of factors for each pose
-        var lms_per_pose = Tensor[DType.uint64](num_cam)
+        var lms_per_pose = Tensor[DType.uint64](num_poses)
 
         for i in range(self.factors.values.__len__()):
             let f = self.factors.values[i]
             lms_per_pose[f.id_pose.__int__()] += 1
 
         self.scene.setup(id_pairs, indices_pair, lms_per_pose)
+        print()
+
+    fn pairs_left(self) -> Int:
+        return self.scene.id_pairs.size()
 
     fn register_first_pair(inout self):
         # Get first image data
@@ -358,20 +366,14 @@ struct SfM:
         let cam2_id = cam_pair.get[1, Int]()
 
         # Estimate everything
-        let E = cv.findEssentialMat(
+        let result = cv.recoverPoseAndECV(
             kp1,
             kp2,
             self.state.cameras.values[cam1_id],
             self.state.cameras.values[cam2_id],
         )
         let pose1 = SE3.identity()
-        var pose2 = cv.recoverPose(
-            E,
-            kp1,
-            kp2,
-            self.state.cameras.values[cam1_id],
-            self.state.cameras.values[cam2_id],
-        )
+        let pose2 = result.pose
         let lms = cv.triangulate(
             self.state.cameras.values[cam1_id],
             pose1,
@@ -381,10 +383,9 @@ struct SfM:
             kp2,
         )
 
-        # TODO: Not great, but it gets us by
-        # pose2.rot = SO3.identity()
+        print("---E RANSAC:", result.num_inliers, "/", kp1.dim(0))
 
-        # Insert everything into graph
+        # Insert all inliers into graph
         self.state.poses.add(next_pair.id1)
         self.state.poses.add(next_pair.id2)
         self.state.poses.values[next_pair.id1] = pose1
@@ -393,50 +394,59 @@ struct SfM:
         self.state.cameras.add(cam1_id)
         self.state.cameras.add(cam2_id)
 
-        for i in range(lm_idx.dim(0)):
-            let idx = lm_idx[Index(i)].__int__()
-            self.state.landmarks.add(idx)
-            self.state.landmarks.values[idx] = lms[i]
-
-        for i in range(next_pair.factor_idx.dim(0)):
-            self.factors.add(next_pair.factor_idx[Index(i)].__int__())
+        for i in range(result.inliers.dim(0)):
+            if result.inliers[Index(i)]:
+                self.factors.add(next_pair.factor_idx[Index(2 * i)].__int__())
+                self.factors.add(next_pair.factor_idx[Index(2 * i + 1)].__int__())
+                let lm_idx = lm_idx[Index(i)].__int__()
+                self.state.landmarks.add(lm_idx)
+                self.state.landmarks.values[lm_idx] = lms[i]
+        print()
 
     fn register(inout self):
-        # TODO: Probably want some kind of cheriality check here after triangulation
-        #  - maybe remove those factors in the _init_estimate_lm function?
-        #  - might want to do the same for outliers in the _init_estimate_pose function
         let next_pair = self.scene.get_next_pair(self.state.poses.active_to_id)
         print("Registering pair:", next_pair.id1, next_pair.id2)
 
         # Find which factors have / haven't been added
         var new_lm_factors = IntSet(self.factors.total())  # for PnP
-        var old_factors = IntSet(self.factors.total())  # for Triangulation
+        var new_pose_factors = IntSet(self.factors.total())  # for Triangulation
 
         for i in range(next_pair.factor_idx.dim(0)):
-            let id = next_pair.factor_idx[Index(i)].__int__()
-            let cam_id = self.factors[id].id_cam.__int__()
-            let lm_id = self.factors[id].id_lm.__int__()
-            if self.factors.contains(id):
-                old_factors.add(id)
+            let factor_id = next_pair.factor_idx[Index(i)].__int__()
+            let cam_id = self.factors[factor_id].id_cam.__int__()
+            let lm_id = self.factors[factor_id].id_lm.__int__()
+            let pose_id = self.factors[factor_id].id_pose.__int__()
+            # Grab any factors with landmarks that haven't been added yet (-> triangulate)
             if not self.state.landmarks.contains(lm_id):
-                new_lm_factors.add(id)
+                new_lm_factors.add(factor_id)
+            # Grab any factors with poses that haven't been added yet, but landmarks have (-> PnP)
+            elif not self.state.poses.contains(pose_id):
+                new_pose_factors.add(factor_id)
+            # Anything else (There's only occasionally one that happens here, not sure what it'd be)
+            # else:
+            #     self.factors.add(factor_id)
 
-            self.factors.add(id)
-            self.state.cameras.add(cam_id)
+        let has_both = self.state.poses.contains(
+            next_pair.id1
+        ) and self.state.poses.contains(next_pair.id2)
 
-        if old_factors.size() < 30:
-            print("Not enough new factors to register!")
+        if not has_both and new_pose_factors.size() < 10:
+            print("Not enough new factors to register new image!")
+            print()
+            return
 
+        # These functions add their respective factors in as well
         # Add in any new poses
         if not self.state.poses.contains(next_pair.id1):
-            self._estimate_init_pose(next_pair.id1, old_factors)
+            self._estimate_init_pose(next_pair.id1, new_pose_factors)
         if not self.state.poses.contains(next_pair.id2):
-            self._estimate_init_pose(next_pair.id2, old_factors)
+            self._estimate_init_pose(next_pair.id2, new_pose_factors)
         # Add in any new landmarks
         if new_lm_factors.size() > 0:
             self._estimate_init_landmarks(new_lm_factors)
         else:
             print("No new landmarks to add!")
+        print()
 
     fn _estimate_init_pose(inout self, pose_id: Int, factor_idx: IntSet):
         """Initialize a pose based on a set of factors with initialized landmarks"""
@@ -455,13 +465,22 @@ struct SfM:
             pts2d[Index(i, 1)] = factor.measured[1]
             if factor.id_pose == pose_id:
                 cam_id = factor.id_cam.__int__()
-        let pose_new = cv.PnP(self.state.cameras[cam_id], pts2d, pts3d)
-        self.state.poses[pose_id] = pose_new
+        let result = cv.PnPCV(self.state.cameras[cam_id], pts2d, pts3d)
+        self.state.poses[pose_id] = result.pose
         self.state.poses.add(pose_id)
+
+        self.state.cameras.add(cam_id)
+
+        # Handle outliers
+        for i in range(factor_idx.size()):
+            let id = factor_idx.elements[i]
+            if result.inliers[Index(i)]:
+                self.factors.add(id)
+
+        print("---PnP RANSAC:", result.num_inliers, "/", factor_idx.size())
 
     fn _estimate_init_landmarks(inout self, factor_idx: IntSet):
         """Initialize landmarks based on a set of factors with initialized poses"""
-        # TODO: This assumes factors are ordered every other... hopefully ture
         # Get data for new factors
         let num_new: Int = (factor_idx.size() / 2).__int__()
         var pts1 = Tensor[DType.float64](num_new, 2)
@@ -496,19 +515,49 @@ struct SfM:
 
         let lm_new = cv.triangulate(K1, T1, pts1, K2, T2, pts2)
 
+        var num_inliers = 0
         for i in range(num_new):
+            # outlier check
             let this_id = lm_id[i].__int__()
-            self.state.landmarks[this_id] = lm_new[i]
-            self.state.landmarks.add(this_id)
+            let lm = lm_new[i]
+            if (
+                (T1.inv() * lm.val)[2] > 0
+                and (T2.inv() * lm.val)[2] > 0
+                # and (lm.val * lm.val).reduce_add() < 100
+            ):
+                self.state.landmarks[this_id] = lm_new[i]
+                self.state.landmarks.add(this_id)
+
+                let id1 = factor_idx.elements[2 * i]
+                let id2 = factor_idx.elements[2 * i + 1]
+                self.factors.add(id1)
+                self.factors.add(id2)
+
+                num_inliers += 1
+
+        print("---Triangulate Good:", num_inliers, "/", num_new)
 
     fn optimize(
         inout self,
         max_iters: Int = 20,
         abs_tol: Float64 = 1e-2,
-        rel_tol: Float64 = 1e-12,
+        rel_tol: Float64 = 1e-5,
+        grad_tol: Float64 = 1e0,
     ):
+        print(
+            "Optimize\n -> cameras:",
+            self.state.cameras.active_to_id.__str__(),
+            "\n -> poses:",
+            self.state.poses.size(),
+            "\n -> landmarks:",
+            self.state.landmarks.size(),
+            "\n -> factors:",
+            self.factors.size(),
+        )
         var abs_error = abs_tol + 1
         var rel_diff = rel_tol + 1
+        if self.lambd >= 1e6:
+            self.lambd = 1
 
         for iter in range(max_iters):
             try:
@@ -521,43 +570,43 @@ struct SfM:
                 let r_norm = np.linalg.norm(rpy)
                 print("---R INIT", r_norm)
 
+                let DrT_rpy = -np.matmul(Drpy.T, rpy)
+                let grad_norm = np.linalg.norm(DrT_rpy) / rpy.shape[0]
+                if grad_norm < grad_tol:
+                    print("---Finishing due to grad norm", grad_norm)
+                    break
+
                 var step = Tensor[DType.float64](0)
-                var lambd: Float64 = 1e-4
-                for lambd_index in range(10):
+                while self.lambd < 10**6:
                     try:
-                        let diag = np.diag(np.diag(Drpy)) * lambd
+                        let diag = np.diag(np.diag(Drpy)) * self.lambd
                         let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
 
-                        let steppy = np.linalg.solve(DrT_Drpy, -np.matmul(Drpy.T, rpy))
+                        let steppy = np.linalg.solve(DrT_Drpy, DrT_rpy)
                         step = mc.np2tensor1d_f64(steppy)
                     except e:
                         print("---Failed to solve!")
                         print(e)
-                        lambd *= 10.0
+                        self.lambd *= 10.0
                         continue
 
-                    # print("Perturbing")
-                    # print(self.state.landmarks.size())
-                    # print(self.state.poses.size())
                     let next_state = perturb(self.state, step)
-                    # print(next_state.landmarks.size())
-                    # print(next_state.poses.size())
                     let next_r = compute_residual_vec(next_state, self.factors)
                     let next_r_norm = np.linalg.norm(mc.tensor2np(next_r))
 
                     # print("next_r_norm:", next_r_norm)
                     if next_r_norm < r_norm:
-                        print("---ACCEPTED", next_r_norm)
+                        print("---STEPPED", next_r_norm, ", lambda: ", self.lambd)
                         self.state = next_state
                         rel_diff = mc.squared_norm(step)
                         abs_error = mc.pyfloat[DType.float64](next_r_norm)
-                        print("---DONE ACCEPTING")
+                        self.lambd /= 10.0
                         break
                     else:
-                        # print("try again", lambd, r_norm - next_r_norm)
-                        lambd *= 10.0
+                        # print("---try again", self.lambd, r_norm - next_r_norm)
+                        self.lambd *= 10.0
 
-                if lambd == 10**6:
+                if self.lambd >= 10**6:
                     print("---Failed to find a good step size!")
                     break
 
@@ -565,5 +614,12 @@ struct SfM:
                 print("---Failed to import numpy")
                 print(e)
 
-            if rel_diff < rel_tol or abs_error < abs_tol:
+            if rel_diff < rel_tol:
+                print("---Finishing due to small step size", rel_diff)
                 break
+
+            if abs_error < abs_tol:
+                print("---Finishing due to small error", abs_error)
+                break
+
+        print()

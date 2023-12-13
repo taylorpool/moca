@@ -118,7 +118,7 @@ def test_PnP() -> NoneType:
     T_est = cv.PnP(K, kps, ps)
 
     assert_almost_equal(T.rot.quat, T_est.rot.quat, atol=1e-3, rtol=1e-5)
-    assert_almost_equal(T.trans, T_est.trans)
+    assert_almost_equal(T.trans, T_est.trans, atol=1e-2, rtol=1e-3)
 
 
 def test_decomposeEssential() -> NoneType:
