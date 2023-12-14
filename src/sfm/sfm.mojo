@@ -405,6 +405,7 @@ struct SfM:
 
     fn register(inout self):
         let next_pair = self.scene.get_next_pair(self.state.poses.active_to_id)
+        let num_factors_before = self.factors.size()
         print("Registering pair:", next_pair.id1, next_pair.id2)
 
         # Find which factors have / haven't been added
@@ -422,7 +423,8 @@ struct SfM:
             # Grab any factors with poses that haven't been added yet, but landmarks have (-> PnP)
             elif not self.state.poses.contains(pose_id):
                 new_pose_factors.add(factor_id)
-            # Anything else (There's only occasionally one that happens here, not sure what it'd be)
+            # When a pose & landmark have been added, but not together
+            # TODO: This should be on, but optimization get more difficult with it on
             # else:
             #     self.factors.add(factor_id)
 
@@ -445,7 +447,9 @@ struct SfM:
         if new_lm_factors.size() > 0:
             self._estimate_init_landmarks(new_lm_factors)
         else:
-            print("No new landmarks to add!")
+            print("---No new landmarks to add!")
+
+        print("---Added factors:", self.factors.size() - num_factors_before)
         print()
 
     fn _estimate_init_pose(inout self, pose_id: Int, factor_idx: IntSet):
@@ -542,7 +546,7 @@ struct SfM:
         max_iters: Int = 20,
         abs_tol: Float64 = 1e-2,
         rel_tol: Float64 = 1e-5,
-        grad_tol: Float64 = 1e0,
+        grad_tol: Float64 = 1e-1,
     ):
         print(
             "Optimize\n -> cameras:",
@@ -562,6 +566,7 @@ struct SfM:
         for iter in range(max_iters):
             try:
                 let np = Python.import_module("numpy")
+                let scipy = Python.import_module("scipy")
                 let r = compute_residual_vec(self.state, self.factors)
                 let Dr = compute_residual_jac(self.state, self.factors)
 
@@ -576,13 +581,24 @@ struct SfM:
                     print("---Finishing due to grad norm", grad_norm)
                     break
 
+                let DrT_Drpy = np.matmul(Drpy.T, Drpy)
+
                 var step = Tensor[DType.float64](0)
                 while self.lambd < 10**6:
                     try:
-                        let diag = np.diag(np.diag(Drpy)) * self.lambd
-                        let DrT_Drpy = np.matmul(Drpy.T, Drpy) + diag
+                        let diag = np.eye(Drpy.shape[1]) * self.lambd
+                        let DrT_Drpy_damped = DrT_Drpy + diag
 
-                        let steppy = np.linalg.solve(DrT_Drpy, DrT_rpy)
+                        let steppy = scipy.linalg.solve(
+                            DrT_Drpy_damped,
+                            DrT_rpy,
+                            False,
+                            False,
+                            False,
+                            False,
+                            "pos",
+                        )
+                        # let steppy = np.linalg.solve(DrT_Drpy, DrT_rpy, )
                         step = mc.np2tensor1d_f64(steppy)
                     except e:
                         print("---Failed to solve!")
@@ -599,7 +615,7 @@ struct SfM:
                         print("---STEPPED", next_r_norm, ", lambda: ", self.lambd)
                         self.state = next_state
                         rel_diff = mc.squared_norm(step)
-                        abs_error = mc.pyfloat[DType.float64](next_r_norm)
+                        abs_error = mc.pyfloat[DType.float64](r_norm - next_r_norm)
                         self.lambd /= 10.0
                         break
                     else:
